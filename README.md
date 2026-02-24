@@ -17,3 +17,15 @@ Current notes:
 - I will need some way though to get from my map to lat lon.
   - After some googling I think the easiest way is use an orthogonal projection and probably just eyeball the fit. So setup some R script to plot a view of the earth based on some orthogonal projection, play around a bit until I'm happy enough at the match. Then grab those parameters and use them to project from my xy into lat lon and feed into suntools.
   - Should be able to do as such with good old sf?
+
+
+
+
+```json
+    //   "aplite",
+    //   "basalt",
+    //   "chalk",
+    //   "diorite",
+    //   "emery",
+    //   "flint",
+```
