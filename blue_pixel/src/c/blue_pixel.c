@@ -53,31 +53,49 @@ static void update_background_image(struct tm *tick_time) {
     // }
 
     // Knitting example - combine day and night bitmaps
-    uint8_t *day_data = gbitmap_get_data(s_day_bitmap);
+    // create a copy of day then modify
     uint8_t *night_data = gbitmap_get_data(s_night_bitmap);
     unsigned int bytes_per_row = gbitmap_get_bytes_per_row(s_day_bitmap);
     GRect bounds = gbitmap_get_bounds(s_day_bitmap);
     unsigned int rows = bounds.size.h;
     unsigned int cols = bounds.size.w;
 
+    uint8_t *comb_data = malloc(bytes_per_row * rows);
+    memcpy(comb_data, gbitmap_get_data(s_day_bitmap), bytes_per_row * rows);
+
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Bitmap dimensions: %d cols x %d rows, bytes per row: %d", cols, rows, bytes_per_row);
 
-    //  // For 8Bit format: each pixel is 1 byte
-    // // Copy night bitmap data for the right half
-    // for (unsigned int row = 0; row < rows; row++) {
-    //     for (unsigned int col = cols / 2; col < cols; col++) {
-    //         unsigned int offset = row * bytes_per_row + col;
-    //         comb_data[offset] = night_data[offset];
-    //     }
-    // }
-    for (jj in 0..cols-1) {
-        if (jj < cols/2) {
-            APP_LOG(APP_LOG_LEVEL_DEBUG, "Processing column %d (day)", jj);
-        } else {
-            APP_LOG(APP_LOG_LEVEL_DEBUG, "Processing column %d (night)", jj);
-            comb_data[:, jj] = night_data[:, jj]
+    for (unsigned int ii = 0; ii < rows; ii++) {
+        unsigned int row_byte_num = ii * bytes_per_row;
+        for (unsigned int jj = 0; jj < cols; jj++) {
+            if (jj > cols/2) {
+                // for a 2Bit palette, each pixel is represented by 2 bits, so we need to calculate the correct location
+                unsigned int byte_index = row_byte_num + (jj / 4); // Calculate the byte index for the current pixel
+                comb_data[byte_index] = night_data[byte_index];
+            }
+        }
     }
-    
+    // debug: check that the combined data has the expected values in the right places
+    // interesting bytes will be in the middle
+    unsigned int n_print_bytes = 8;
+    unsigned int interesting_byte_index = (rows/2) * bytes_per_row + bytes_per_row / 2 -2; // this should be around the middle of the bitmap
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Combined bitmap data sample (mid 8 bytes):");
+    for (unsigned int i = interesting_byte_index; i < interesting_byte_index + n_print_bytes; i++) {
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Byte %d: %02X", i,
+                (unsigned int)comb_data[i]);
+    }
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Night bitmap data sample (mid 8 bytes):");
+    for (unsigned int i = interesting_byte_index; i < interesting_byte_index + n_print_bytes; i++) {
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Byte %d: %02X", i,
+                (unsigned int)night_data[i]);
+    }
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Day bitmap data sample (mid 8 bytes):");
+    uint8_t *day_data = gbitmap_get_data(s_day_bitmap);
+    for (unsigned int i = interesting_byte_index; i < interesting_byte_index + n_print_bytes; i++) {
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Byte %d: %02X", i,
+                (unsigned int)day_data[i]);
+    }
+
     // create blank bitmap
     s_bitmap = gbitmap_create_with_data(comb_data);
 
