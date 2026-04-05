@@ -29,6 +29,9 @@ static void update_background_image(struct tm *tick_time) {
     // It is my understanding that the palette bitmap types allow you to have x many colours from the palette. So 2BitPalette allows for 4 colours.
     // check if day_bitmap and night_bitmap are already loaded, if not load them
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Updating background image for time: %d:%d", tick_time->tm_hour, tick_time->tm_min);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory START: Free=%lu Used=%lu", 
+            (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
+    
     if (s_day_bitmap == NULL) {
         s_day_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLUE_MARBLE);
     }
@@ -36,19 +39,52 @@ static void update_background_image(struct tm *tick_time) {
         s_night_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLACK_MARBLE);
     }
 
-    // The background image will be based on the time of day, for 7pm-7am we will show RESOURCE_ID_BLUE_MARBLE and for 7am-7pm we will show RESOURCE_ID_BLUE_MARBLE
-    // if (tick_time->tm_hour >= 19 || tick_time->tm_hour < 7) {
-    // debug: we'll switch the background every minute instead of every 12 hours
-    if (tick_time->tm_min % 2) {
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "It's night time, using night bitmap");
-        // Load the bitmap resource as GBitmap
-        s_bitmap = s_night_bitmap;
-    } else {
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "It's day time, using day bitmap");
-        s_bitmap = s_day_bitmap;
+    // Switching example
+    // // The background image will be based on the time of day, for 7pm-7am we will show RESOURCE_ID_BLUE_MARBLE and for 7am-7pm we will show RESOURCE_ID_BLUE_MARBLE
+    // // if (tick_time->tm_hour >= 19 || tick_time->tm_hour < 7) {
+    // // debug: we'll switch the background every minute instead of every 12 hours
+    // if (tick_time->tm_min % 2) {
+    //     APP_LOG(APP_LOG_LEVEL_DEBUG, "It's night time, using night bitmap");
+    //     // Load the bitmap resource as GBitmap
+    //     s_bitmap = s_night_bitmap;
+    // } else {
+    //     APP_LOG(APP_LOG_LEVEL_DEBUG, "It's day time, using day bitmap");
+    //     s_bitmap = s_day_bitmap;
+    // }
+
+    // Knitting example - combine day and night bitmaps
+    uint8_t *day_data = gbitmap_get_data(s_day_bitmap);
+    uint8_t *night_data = gbitmap_get_data(s_night_bitmap);
+    unsigned int bytes_per_row = gbitmap_get_bytes_per_row(s_day_bitmap);
+    GRect bounds = gbitmap_get_bounds(s_day_bitmap);
+    unsigned int rows = bounds.size.h;
+    unsigned int cols = bounds.size.w;
+
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Bitmap dimensions: %d cols x %d rows, bytes per row: %d", cols, rows, bytes_per_row);
+
+    //  // For 8Bit format: each pixel is 1 byte
+    // // Copy night bitmap data for the right half
+    // for (unsigned int row = 0; row < rows; row++) {
+    //     for (unsigned int col = cols / 2; col < cols; col++) {
+    //         unsigned int offset = row * bytes_per_row + col;
+    //         comb_data[offset] = night_data[offset];
+    //     }
+    // }
+    for (jj in 0..cols-1) {
+        if (jj < cols/2) {
+            APP_LOG(APP_LOG_LEVEL_DEBUG, "Processing column %d (day)", jj);
+        } else {
+            APP_LOG(APP_LOG_LEVEL_DEBUG, "Processing column %d (night)", jj);
+            comb_data[:, jj] = night_data[:, jj]
     }
+    
+    // create blank bitmap
+    s_bitmap = gbitmap_create_with_data(comb_data);
 
     bitmap_layer_set_bitmap(s_bitmap_layer, s_bitmap);
+    
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory END: Free=%lu Used=%lu", 
+            (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
 }
 
 static void update_time(bool force_bgd_update) {
