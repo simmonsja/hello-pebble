@@ -3,8 +3,6 @@
 static Window *s_window;
 static TextLayer *s_time_layer;
 static GBitmap *s_bitmap;
-static GBitmap *s_day_bitmap;
-static GBitmap *s_night_bitmap;
 static BitmapLayer *s_bitmap_layer;
 
 static void prv_select_click_handler(ClickRecognizerRef recognizer, void *context) {
@@ -25,32 +23,6 @@ static void prv_click_config_provider(void *context) {
     window_single_click_subscribe(BUTTON_ID_DOWN, prv_down_click_handler);
 }
 
-static void update_background_image(struct tm *tick_time) {
-    // It is my understanding that the palette bitmap types allow you to have x many colours from the palette. So 2BitPalette allows for 4 colours.
-    // check if day_bitmap and night_bitmap are already loaded, if not load them
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Updating background image for time: %d:%d", tick_time->tm_hour, tick_time->tm_min);
-    if (s_day_bitmap == NULL) {
-        s_day_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLUE_MARBLE);
-    }
-    if (s_night_bitmap == NULL) {
-        s_night_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLACK_MARBLE);
-    }
-
-    // The background image will be based on the time of day, for 7pm-7am we will show RESOURCE_ID_BLUE_MARBLE and for 7am-7pm we will show RESOURCE_ID_BLUE_MARBLE
-    // if (tick_time->tm_hour >= 19 || tick_time->tm_hour < 7) {
-    // debug: we'll switch the background every minute instead of every 12 hours
-    if (tick_time->tm_min % 2) {
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "It's night time, using night bitmap");
-        // Load the bitmap resource as GBitmap
-        s_bitmap = s_night_bitmap;
-    } else {
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "It's day time, using day bitmap");
-        s_bitmap = s_day_bitmap;
-    }
-
-    bitmap_layer_set_bitmap(s_bitmap_layer, s_bitmap);
-}
-
 static void update_time(bool force_bgd_update) {
     // Get a time structure
     time_t temp = time(NULL);
@@ -65,22 +37,30 @@ static void update_time(bool force_bgd_update) {
     // // Display this time on the created TextLayer
     text_layer_set_text(s_time_layer, s_time_buffer);
 
-    // If the time is on the hour or half past
-    if (tick_time->tm_min == 0 || tick_time->tm_min == 30 || force_bgd_update) {
-        // Update the background image based on the time of day
-        update_background_image(tick_time);
-    }
+    // // If the time is on the hour or half past
+    // if (tick_time->tm_min == 0 || tick_time->tm_min == 30 || force_bgd_update) {
+    //     // Update the background image based on the time of day
+    //     update_background_image(tick_time);
+    // }
 }
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
-    // debug: set true
-    update_time(true);
+    update_time(false);
 }
 
 static void prv_window_load(Window *window) {
     // Get the root layer and its bounds for 
     Layer *window_layer = window_get_root_layer(window);
     GRect bounds = layer_get_bounds(window_layer);
+
+    // Create a layer to display the GBitmap
+    s_bitmap_layer = bitmap_layer_create(GRect(0, 0, 260, 260));//bounds.size.w, bounds.size.h)); // Gabbro 260, 260));
+    bitmap_layer_set_compositing_mode(s_bitmap_layer, GCompOpSet);
+    s_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLACK_MARBLE);
+    // Link the GBitmap to the BitmapLayer
+    bitmap_layer_set_bitmap(s_bitmap_layer, s_bitmap);
+    // Add the BitmapLayer to the window's root layer
+    layer_add_child(window_get_root_layer(window), bitmap_layer_get_layer(s_bitmap_layer));
 
     // Display the time GRect (xul,yul, width, height)
     const int layer_height = 42;
@@ -92,19 +72,11 @@ static void prv_window_load(Window *window) {
     text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD));
     text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
 
-    // Create a layer to display the GBitmap
-    s_bitmap_layer = bitmap_layer_create(GRect(0, 0, 260, 260));//bounds.size.w, bounds.size.h)); // Gabbro 260, 260));
-    bitmap_layer_set_compositing_mode(s_bitmap_layer, GCompOpSet);
-    // // Link the GBitmap to the BitmapLayer
-    // bitmap_layer_set_bitmap(s_bitmap_layer, s_bitmap);
-    // Add the BitmapLayer to the window's root layer
-    layer_add_child(window_get_root_layer(window), bitmap_layer_get_layer(s_bitmap_layer));
+    // Add the TextLayer to the window's root layer
+    layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
 
     // Update the time immediately when the window loads
     update_time(true);
-
-    // Add the TextLayer to the window's root layer
-    layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
 }
 
 static void prv_window_unload(Window *window) {
@@ -134,12 +106,7 @@ static void prv_deinit(void) {
     window_destroy(s_window);
     // Clean up the GBitmap and BitmapLayer resources
     bitmap_layer_destroy(s_bitmap_layer);
-    if (s_day_bitmap) {
-        gbitmap_destroy(s_day_bitmap);
-    }
-    if (s_night_bitmap) {
-        gbitmap_destroy(s_night_bitmap);
-    }
+    gbitmap_destroy(s_bitmap);
 }
 
 int main(void) {

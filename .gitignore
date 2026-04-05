@@ -3,3 +3,5 @@ blue_pixel/build/
 blue_pixel/.lock-waf_darwin_build
 blue_pixel/*
 !blue_pixel/src/
+
+hello/
