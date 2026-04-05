@@ -60,6 +60,12 @@ static void update_background_image(struct tm *tick_time) {
     unsigned int rows = bounds.size.h;
     unsigned int cols = bounds.size.w;
 
+    // Before creating new bitmap, destroy the old one
+    if (s_bitmap != NULL && s_bitmap != s_day_bitmap && s_bitmap != s_night_bitmap) {
+        gbitmap_destroy(s_bitmap);
+        s_bitmap = NULL;
+    }
+
     uint8_t *comb_data = malloc(bytes_per_row * rows);
     memcpy(comb_data, gbitmap_get_data(s_day_bitmap), bytes_per_row * rows);
 
@@ -75,31 +81,21 @@ static void update_background_image(struct tm *tick_time) {
             }
         }
     }
-    // debug: check that the combined data has the expected values in the right places
-    // interesting bytes will be in the middle
-    unsigned int n_print_bytes = 8;
-    unsigned int interesting_byte_index = (rows/2) * bytes_per_row + bytes_per_row / 2 -2; // this should be around the middle of the bitmap
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Combined bitmap data sample (mid 8 bytes):");
-    for (unsigned int i = interesting_byte_index; i < interesting_byte_index + n_print_bytes; i++) {
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Byte %d: %02X", i,
-                (unsigned int)comb_data[i]);
-    }
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Night bitmap data sample (mid 8 bytes):");
-    for (unsigned int i = interesting_byte_index; i < interesting_byte_index + n_print_bytes; i++) {
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Byte %d: %02X", i,
-                (unsigned int)night_data[i]);
-    }
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Day bitmap data sample (mid 8 bytes):");
-    uint8_t *day_data = gbitmap_get_data(s_day_bitmap);
-    for (unsigned int i = interesting_byte_index; i < interesting_byte_index + n_print_bytes; i++) {
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Byte %d: %02X", i,
-                (unsigned int)day_data[i]);
-    }
+        
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory merged: Free=%lu Used=%lu", 
+            (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
 
     // create blank bitmap
-    s_bitmap = gbitmap_create_with_data(comb_data);
-
+    s_bitmap = gbitmap_create_blank(bounds.size, gbitmap_get_format(s_day_bitmap));
+    // copy the combined data into the new bitmap
+    gbitmap_set_data(s_bitmap, comb_data, gbitmap_get_format(s_day_bitmap), bytes_per_row, true);
+    free(comb_data);
+        
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory assigned: Free=%lu Used=%lu", 
+            (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "I am about to set the bitmap on the layer");
     bitmap_layer_set_bitmap(s_bitmap_layer, s_bitmap);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "I have set the bitmap on the layer");
     
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory END: Free=%lu Used=%lu", 
             (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
