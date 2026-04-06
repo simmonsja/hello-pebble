@@ -99,26 +99,28 @@ static void update_background_image(struct tm *tick_time) {
 
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Bitmap dimensions: %d cols x %d rows, bytes per row: %d", cols, rows, bytes_per_row);
 
+    unsigned int transition_pixel = cols*(tick_time->tm_min / 60.0);
     for (unsigned int ii = 0; ii < rows; ii++) {
         unsigned int row_byte_num = ii * bytes_per_row;
-        for (unsigned int jj = 0; jj < cols; jj++) {
-            if (jj > cols*(tick_time->tm_min / 60.0)) {
+        for (unsigned int jj = 0; jj < bytes_per_row; jj++) {
+            if ((jj * 2 + 1) > transition_pixel) {
                 // For a 4-bit palette, each byte contains 2 pixels (4 bits each)
                 // We need to remap the palette indices since night colors moved in palette
-                unsigned int byte_index = row_byte_num + (jj / 2);
-                uint8_t byte_value = night_data[byte_index];
+                uint8_t byte_value = night_data[row_byte_num + jj];
                 
                 // Extract the two 4-bit pixel values
                 // & 0x0F masks to get the last 4 bits, >> shifts bits right so that same mask gets the first 4 bits
-                uint8_t pixel1 = (byte_value >> 4) & 0x0F;  // High nibble
-                uint8_t pixel2 = byte_value & 0x0F;          // Low nibble
+                uint8_t pixel1 = (byte_value >> 4) & 0x0F;
+                uint8_t pixel2 = byte_value & 0x0F;
                 
                 // Remap non-zero palette indices by adding n_colours_per_palette (e.g. shift from indices 1-4 to 5-8)
-                pixel1 += n_colours_per_palette;
                 pixel2 += n_colours_per_palette;
-                
+                if (jj * 2 > transition_pixel) {
+                    pixel1 += n_colours_per_palette;
+                }
+
                 // Recombine the remapped pixels
-                comb_data[byte_index] = (pixel1 << 4) | pixel2;
+                comb_data[row_byte_num + jj] = (pixel1 << 4) | pixel2;
             }
         }
     }
