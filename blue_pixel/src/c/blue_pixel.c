@@ -39,6 +39,34 @@ static void update_background_image(struct tm *tick_time) {
         s_night_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLACK_MARBLE);
     }
 
+    // Print the palette colours
+    int n_colours_per_palette = 4;
+    GColor *day_palette = gbitmap_get_palette(s_day_bitmap);
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Day bitmap palette:");
+    // for (int i = 0; i < n_colours_print; i++) {
+    //     GColor color = day_palette[i];
+    //     APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+    // }
+    GColor *night_palette = gbitmap_get_palette(s_night_bitmap);
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Night bitmap palette:");
+    // for (int i = 0; i < n_colours_print; i++) {
+    //     GColor color = night_palette[i];
+    //     APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+    // }
+
+    // combine the two palettes
+    for (int i = 0; i < n_colours_per_palette; i++) {
+        day_palette[i+n_colours_per_palette] = night_palette[i];
+    }
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Combined bitmap palette:");
+    // for (int i = 0; i < n_colours_print; i++) {
+    //     GColor color = day_palette[i];
+    //     APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+    // }
+
+    gbitmap_set_palette(s_day_bitmap, day_palette, false);
+    gbitmap_set_palette(s_night_bitmap, day_palette, false);
+
     // Switching example
     // // The background image will be based on the time of day, for 7pm-7am we will show RESOURCE_ID_BLUE_MARBLE and for 7am-7pm we will show RESOURCE_ID_BLUE_MARBLE
     // // if (tick_time->tm_hour >= 19 || tick_time->tm_hour < 7) {
@@ -74,10 +102,23 @@ static void update_background_image(struct tm *tick_time) {
     for (unsigned int ii = 0; ii < rows; ii++) {
         unsigned int row_byte_num = ii * bytes_per_row;
         for (unsigned int jj = 0; jj < cols; jj++) {
-            if (jj > cols/2) {
-                // for a 2Bit palette, each pixel is represented by 2 bits, so we need to calculate the correct location
-                unsigned int byte_index = row_byte_num + (jj / 4); // Calculate the byte index for the current pixel
-                comb_data[byte_index] = night_data[byte_index];
+            if (jj > cols*(tick_time->tm_min / 60.0)) {
+                // For a 4-bit palette, each byte contains 2 pixels (4 bits each)
+                // We need to remap the palette indices since night colors moved in palette
+                unsigned int byte_index = row_byte_num + (jj / 2);
+                uint8_t byte_value = night_data[byte_index];
+                
+                // Extract the two 4-bit pixel values
+                // & 0x0F masks to get the last 4 bits, >> shifts bits right so that same mask gets the first 4 bits
+                uint8_t pixel1 = (byte_value >> 4) & 0x0F;  // High nibble
+                uint8_t pixel2 = byte_value & 0x0F;          // Low nibble
+                
+                // Remap non-zero palette indices by adding n_colours_per_palette (e.g. shift from indices 1-4 to 5-8)
+                pixel1 += n_colours_per_palette;
+                pixel2 += n_colours_per_palette;
+                
+                // Recombine the remapped pixels
+                comb_data[byte_index] = (pixel1 << 4) | pixel2;
             }
         }
     }
@@ -88,8 +129,11 @@ static void update_background_image(struct tm *tick_time) {
     // create blank bitmap
     s_bitmap = gbitmap_create_blank(bounds.size, gbitmap_get_format(s_day_bitmap));
     // copy the combined data into the new bitmap
-    gbitmap_set_data(s_bitmap, comb_data, gbitmap_get_format(s_day_bitmap), bytes_per_row, true);
+    gbitmap_set_data(s_bitmap, comb_data, gbitmap_get_format(s_day_bitmap), bytes_per_row, false);
     free(comb_data);
+
+    // set the palette
+    gbitmap_set_palette(s_bitmap, day_palette, false);
         
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory assigned: Free=%lu Used=%lu", 
             (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
@@ -123,8 +167,7 @@ static void update_time(bool force_bgd_update) {
 }
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
-    // debug: set true
-    update_time(true);
+    update_time(false);
 }
 
 static void prv_window_load(Window *window) {
@@ -143,7 +186,7 @@ static void prv_window_load(Window *window) {
     text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
 
     // Create a layer to display the GBitmap
-    s_bitmap_layer = bitmap_layer_create(GRect(0, 0, 260, 260));//bounds.size.w, bounds.size.h)); // Gabbro 260, 260));
+    s_bitmap_layer = bitmap_layer_create(GRect(0, 0, bounds.size.w, bounds.size.h));//)); // Gabbro 260, 260));
     bitmap_layer_set_compositing_mode(s_bitmap_layer, GCompOpSet);
     // // Link the GBitmap to the BitmapLayer
     // bitmap_layer_set_bitmap(s_bitmap_layer, s_bitmap);
