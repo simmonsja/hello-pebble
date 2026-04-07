@@ -2,7 +2,4 @@
     "[r]": {
         "editor.formatOnSave": true
     },
-    "[R Markdown]": {
-        "editor.formatOnSave": true
-    },
 }

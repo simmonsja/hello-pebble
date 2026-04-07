@@ -3,25 +3,114 @@ title: "Generate day/night transition mapping"
 ---
 
 ```{r}
+devtools::load_all()
+```
 
-library(suntools)
+We need to evaluate the day/night status for each pixel in the raster. We will fix to UTC so that we can easily compare to the current time on the watch. The steps are:
 
-# Calculate sunset - takes coords, datetime, crs, direction (sunrise/sunset), and whether to return POSIXct
+- Generate a raster to lat/lon coordinate converter
+- Generate a grid of times - middle of every month for the next 12 months
+  - we presume the yearly variation is tiny
+  - the bigger issue is the within-month variability but hey, we are also doing this at an extremely coarse resolution so *shrugs*
+- Calculate the sunrise/sunset time for each pixel in the raster
+- Convert this into the most minimal representation for the watch to recreate the day/night transition map
 
-location <- matrix(
-    data = c(-33.8623, 151.2077),
-    nrow = 1)
+We will use `suntools::sunriset()` - takes coords, datetime, crs, direction (sunrise/sunset), and whether to return POSIXct.
 
-suntools::sunriset(
-  matrix(c(-76.4511, 42.4800), nrow = 1),
-  as.POSIXct("2023-06-01", tz = "America/New_York"),
-  crs = sf::st_crs(4326),
-  direction='sunset',
-  POSIXct.out=TRUE
+```{r}
+day_image_path <- here::here("blue_pixel","resources","blue_marble.png")
+day_image <- magick::image_read(day_image_path)
+width <- magick::image_info(day_image)$width
+height <- magick::image_info(day_image)$height
+
+# get the available pixels mask (TRUE = non-transparent)
+raster_data <- day_image |> as.raster()
+# check for transparent pixels via "transparent" string
+available_pixels_mask <- raster_data != "transparent"
+
+# for each row, get the min max column index of available pixels
+min_max_coords <- apply(available_pixels_mask, 1, function(row) {
+    available_indices <- which(row)
+    if (length(available_indices) == 0) {
+        return(c(NA, NA))
+    } else {
+        return(c(min(available_indices), max(available_indices)))
+    }
+}) |> t() |> as.data.frame() |> dplyr::rename(min_x = V1, max_x = V2)
+
+# assert min_max_coords is of length height
+stopifnot(nrow(min_max_coords)  == height)
+```
+
+TODO: I will need to ensure the conversion from circle to rect image keeps the earth as cirular - so find the min dimension, and resize to that and then pad to the height dim.
+
+```{r}
+# calculate the radius
+radius <- min_max_coords |> dplyr::mutate(
+    dist = (max_x - min_x)
+) |> dplyr::select(dist) |> max(na.rm=T)
+
+project_to_lat_lon(
+    x = 157-width/2,
+    y = height/2-168,
+    lat_ref = -3.84,
+    lon_ref = 133.96,
+    radius = radius
+)
+```
+
+```{r}
+# show the image as a plot
+library(ggplot2)
+plot_data <- available_pixels_mask |> 
+    as.data.frame() |> 
+    dplyr::mutate(y = dplyr::row_number()) |>
+    tidyr::pivot_longer(-y, names_to = "x", values_to = "value") |> 
+    dplyr::mutate(x = as.integer(gsub("V", "", x)))
+
+ggplot() +
+    geom_raster(
+        data = plot_data,
+        aes(x = x, y = y, fill = value)
+    ) +
+    scale_fill_manual(values = c("FALSE" = "black", "TRUE" = "blue")) +
+    theme_void() +
+    theme(legend.position = "none") +
+    coord_fixed()
+```
+
+```{r}
+# Get one time per month for the next 12 months
+datetime_per_month <- lubridate::ymd_hms("2026-01-01 12:00:00", tz = "UTC") + lubridate::dmonths(0.5) + lubridate::dmonths(0:11)
+
+# Create a data.frame to store the sunrise/sunset times for each month
+sunrise_sunset_df <- data.frame(
+    datetime = datetime_per_month,
+    sunrise = as.POSIXct(NA),
+    sunset = as.POSIXct(NA)
 )
 
-#  day_frac                time
-#1 0.858628 2023-06-01 20:36:25
+sunrise_sunset_df <- sunrise_sunset_df |> dplyr::mutate(
+    sunrise = purrr::map_vec(datetime, ~ suntools::sunriset(
+        coords,
+        .x,
+        crs = sf::st_crs(4326),
+        direction='sunrise',
+        POSIXct.out=TRUE
+    )$time),
+    sunset = purrr::map_vec(datetime, ~ suntools::sunriset(
+        coords,
+        .x,
+        crs = sf::st_crs(4326),
+        direction='sunset',
+        POSIXct.out=TRUE
+    )$time),
+) 
+|> dplyr::mutate(
+    sunrise = lubridate::round_date(sunrise, unit = "30minute"),
+    sunset = lubridate::round_date(sunset, unit = "30minute")
+)
 
-
+sunrise_sunset_df |>
+    print()
 ```
