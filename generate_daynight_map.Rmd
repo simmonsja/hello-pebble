@@ -1,0 +1,27 @@
+---
+title: "Generate day/night transition mapping"
+---
+
+```{r}
+
+library(suntools)
+
+# Calculate sunset - takes coords, datetime, crs, direction (sunrise/sunset), and whether to return POSIXct
+
+location <- matrix(
+    data = c(-33.8623, 151.2077),
+    nrow = 1)
+
+suntools::sunriset(
+  matrix(c(-76.4511, 42.4800), nrow = 1),
+  as.POSIXct("2023-06-01", tz = "America/New_York"),
+  crs = sf::st_crs(4326),
+  direction='sunset',
+  POSIXct.out=TRUE
+)
+
+#  day_frac                time
+#1 0.858628 2023-06-01 20:36:25
+
+
+```

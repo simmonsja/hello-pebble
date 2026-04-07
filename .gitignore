@@ -5,3 +5,5 @@ blue_pixel/*
 !blue_pixel/src/
 
 hello/
+.Rproj.user
+renv/
