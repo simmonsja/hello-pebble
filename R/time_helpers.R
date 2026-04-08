@@ -6,6 +6,10 @@ get_monthly_sunrise_sunset <- function(lat, lon, datetime) {
         sunset = as.POSIXct(NA)
     )
 
+    if (is.na(lat) | is.na(lon)) {
+        return(sunrise_sunset_df)
+    }
+
     coords <- matrix(c(lon, lat), ncol = 2)
 
     sunrise_sunset_df <- sunrise_sunset_df |>

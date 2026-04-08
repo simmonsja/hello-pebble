@@ -166,7 +166,7 @@ daylight_limits <- array(
 
 # populate the limits with the min and max available pixels for each row
 daylight_limits[,,,"left"] <- array(
-    rep(min_max_coords$min_x |> tidyr::replace_na(1), each = length(datetime_per_month) * increments_per_day),
+    rep(min_max_coords$max_x |> tidyr::replace_na(width), each = length(datetime_per_month) * increments_per_day),
     dim = c(
         length(datetime_per_month),
         increments_per_day,
@@ -174,7 +174,7 @@ daylight_limits[,,,"left"] <- array(
     )
 )
 daylight_limits[,,,"right"] <- array(
-    rep(min_max_coords$max_x |> tidyr::replace_na(width), each = length(datetime_per_month) * increments_per_day),
+    rep(min_max_coords$min_x |> tidyr::replace_na(1), each = length(datetime_per_month) * increments_per_day),
     dim = c(
         length(datetime_per_month),
         increments_per_day,
@@ -187,12 +187,12 @@ daylight_limits[,,,"right"] <- array(
 # now we will iterate over each pixel and calculate the sunrise/sunset times, and then update
 avail_pixel_grid <- pixel_grid |>
     dplyr::filter(is_available)
-time_dim <- dimnames(daylight_limits)$time |> lubridate::hm()
+time_dim <- dimnames(daylight_limits)$time |> as.numeric()
+
+pb <- cli::cli_progress_bar(total = nrow(avail_pixel_grid), format = "{cli::pb_bar} {cli::pb_current}/{cli::pb_total} | ETA: {cli::pb_eta}")
 
 for (ii in seq_len(nrow(avail_pixel_grid))) {
-    if (ii < 1500) {
-        next
-    }
+    cli::cli_progress_update(id = pb)
     this_row <- avail_pixel_grid$row[ii]
     this_col <- avail_pixel_grid$col[ii]
     ss_times <- get_monthly_sunrise_sunset(
@@ -201,12 +201,45 @@ for (ii in seq_len(nrow(avail_pixel_grid))) {
         datetime_per_month
     )
 
-    curr_limits <- daylight_limits[,,this_row,]
+    for (month_idx in ss_times$month) {
+        sunrise_time <- ss_times$sunrise[month_idx]
+        sunset_time <- ss_times$sunset[month_idx]
 
-    break
+        if (is.na(sunrise_time) | is.na(sunset_time)) {
+            # if we don't have sunrise/sunset times, then we assume it's either always day or always night, so we skip
+            next
+        }
+
+        # time mask
+        time_mask <- rep(FALSE, length(time_dim))
+        if (sunset_time < sunrise_time) {
+            # UTC fun 
+            time_mask[time_dim >= sunset_time | time_dim <= sunrise_time] <- TRUE
+        } else {
+            # normal case - day and night
+            time_mask[time_dim >= sunrise_time & time_dim <= sunset_time] <- TRUE
+        }
+
+        # ugly mutate
+        slice_left <- daylight_limits[month_idx, time_mask, this_row, "left"]
+        slice_right <- daylight_limits[month_idx, time_mask, this_row, "right"]
+        slice_left[slice_left > this_col] <- this_col
+        slice_right[slice_right < this_col] <- this_col
+        daylight_limits[month_idx, time_mask, this_row, "left"] <- slice_left
+        daylight_limits[month_idx, time_mask, this_row, "right"] <- slice_right
+    }
 }
+cli::cli_progress_done(id = pb)
 
-# print(curr_limits)
-print(ss_times)
+# save to RDS file
+saveRDS(daylight_limits, here::here("data", "daylight_limits.rds"))
+```
 
+
+```{r}
+daylight_limits <- readRDS(here::here("data", "daylight_limits.rds"))
+plot_daylight(
+    daylight_limits, month = 6, time = seq(0, 23, by = 2),
+    width = width, height = height, radius = radius
+)
 ```
