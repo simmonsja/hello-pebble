@@ -18,7 +18,13 @@ We need to evaluate the day/night status for each pixel in the raster. We will f
 We will use `suntools::sunriset()` - takes coords, datetime, crs, direction (sunrise/sunset), and whether to return POSIXct.
 
 ```{r}
-day_image_path <- here::here("blue_pixel","resources","blue_marble.png")
+platform <- "gabbro"
+centre_lat <- -3.84
+centre_lon <- 133.96
+```
+
+```{r}
+day_image_path <- here::here("blue_pixel","resources",glue::glue("blue_marble_{platform}.png"))
 day_image <- magick::image_read(day_image_path)
 width <- magick::image_info(day_image)$width
 height <- magick::image_info(day_image)$height
@@ -40,22 +46,24 @@ min_max_coords <- apply(available_pixels_mask, 1, function(row) {
 
 # assert min_max_coords is of length height
 stopifnot(nrow(min_max_coords)  == height)
+
+# calculate the radius
+radius <- (min_max_coords |> dplyr::mutate(
+    dist = (max_x - min_x)
+) |> dplyr::select(dist) |> max(na.rm=T)) / 2
+
 ```
 
-TODO: I will need to ensure the conversion from circle to rect image keeps the earth as cirular - so find the min dimension, and resize to that and then pad to the height dim.
-
 ```{r}
-# calculate the radius
-radius <- min_max_coords |> dplyr::mutate(
-    dist = (max_x - min_x)
-) |> dplyr::select(dist) |> max(na.rm=T)
-
+# Check on an easily locatable friend Brisbane for Gabbro
 project_to_lat_lon(
-    x = 157-width/2,
-    y = height/2-168,
-    lat_ref = -3.84,
-    lon_ref = 133.96,
-    radius = radius
+    x = 156,
+    y = 166,
+    lat_ref = centre_lat,
+    lon_ref = centre_lon,
+    radius = radius,
+    width = width,
+    height = height
 )
 ```
 
