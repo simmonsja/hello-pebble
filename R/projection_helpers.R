@@ -5,7 +5,8 @@ project_to_lat_lon <- function(
     lon_ref = 0,
     radius = 1,
     width = 260,
-    height = 260
+    height = 260,
+    verbose = TRUE
 ) {
     # https://mathworld.wolfram.com/OrthographicProjection.html
     # calculate latitude (phi) and longitude (lambda) from x and y coordinates
@@ -16,8 +17,14 @@ project_to_lat_lon <- function(
     rho <- sqrt(x^2 + y^2)
     c <- asin(rho / radius)
     # raise error if abs(c) > pi/2
-    if (abs(c) > pi / 2) {
-        stop("Invalid x and y coordinates: outside of projection bounds")
+    if (is.na(c) | abs(c) > (pi / 2)) {
+        if (verbose) {
+            message("Invalid x and y coordinates: outside of projection bounds")
+        }
+        return(data.frame(
+            lat = NA,
+            lon = NA
+        ))
     }
     phi <- asin(
         cos(c) * sin(rad_lat_ref) + ((y * sin(c) * cos(rad_lat_ref)) / rho)

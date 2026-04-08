@@ -18,7 +18,8 @@ We need to evaluate the day/night status for each pixel in the raster. We will f
 We will use `suntools::sunriset()` - takes coords, datetime, crs, direction (sunrise/sunset), and whether to return POSIXct.
 
 ```{r}
-platform <- "gabbro"
+platform <- "basalt"
+debug <- FALSE
 centre_lat <- -3.84
 centre_lon <- 133.96
 ```
@@ -55,70 +56,157 @@ radius <- (min_max_coords |> dplyr::mutate(
 ```
 
 ```{r}
-# Check on an easily locatable friend Brisbane for Gabbro
-project_to_lat_lon(
-    x = 156,
-    y = 166,
-    lat_ref = centre_lat,
-    lon_ref = centre_lon,
-    radius = radius,
-    width = width,
-    height = height
-)
+if (debug) {
+    # Check on an easily locatable friend Brisbane for Gabbro
+    project_to_lat_lon(
+        x = 157,
+        y = 167,
+        lat_ref = centre_lat,
+        lon_ref = centre_lon,
+        radius = radius,
+        width = width,
+        height = height
+    )
+}
 ```
 
-```{r}
-# show the image as a plot
-library(ggplot2)
-plot_data <- available_pixels_mask |> 
-    as.data.frame() |> 
-    dplyr::mutate(y = dplyr::row_number()) |>
-    tidyr::pivot_longer(-y, names_to = "x", values_to = "value") |> 
-    dplyr::mutate(x = as.integer(gsub("V", "", x)))
+# Generate the lat/lon coordinates for each pixel in the raster
 
-ggplot() +
-    geom_raster(
-        data = plot_data,
-        aes(x = x, y = y, fill = value)
-    ) +
-    scale_fill_manual(values = c("FALSE" = "black", "TRUE" = "blue")) +
-    theme_void() +
-    theme(legend.position = "none") +
-    coord_fixed()
+```{r}
+pixel_grid <- expand.grid(
+    x = 1:width,
+    y = 1:height
+) |>
+    data.frame() |>
+    dplyr::rename(col = x, row = y) |>
+    dplyr::mutate(
+        is_available = available_pixels_mask[cbind(row, col)],
+        coords = purrr::pmap(
+            list(col, row), ~ project_to_lat_lon(
+                x = ..1,
+                y = ..2,
+                lat_ref = centre_lat,
+                lon_ref = centre_lon,
+                radius = radius,
+                width = width,
+                height = height,
+                verbose = FALSE
+            )
+        ),
+        lat = purrr::map_dbl(coords, "lat"),
+        lon = purrr::map_dbl(coords, "lon")
+    ) |>
+    dplyr::select(-coords)
+
+pixel_grid |>
+    dplyr::filter(is_available, lat < -27, lon > 153) |>
+    head(10)
+```
+
+
+```{r}
+if (debug) {
+    # show the image as a plot
+    library(ggplot2)
+    plot_data <- available_pixels_mask |> 
+        as.data.frame() |> 
+        dplyr::mutate(y = dplyr::row_number()) |>
+        tidyr::pivot_longer(-y, names_to = "x", values_to = "value") |> 
+        dplyr::mutate(x = as.integer(gsub("V", "", x)))
+
+    ggplot() +
+        geom_raster(
+            data = plot_data,
+            aes(x = x, y = y, fill = value)
+        ) +
+        scale_fill_manual(values = c("FALSE" = "black", "TRUE" = "blue")) +
+        theme_void() +
+        theme(legend.position = "none") +
+        coord_fixed()
+}
 ```
 
 ```{r}
 # Get one time per month for the next 12 months
-datetime_per_month <- lubridate::ymd_hms("2026-01-01 12:00:00", tz = "UTC") + lubridate::dmonths(0.5) + lubridate::dmonths(0:11)
+datetime_per_month <- lubridate::ymd_hms(
+    "2026-01-01 12:00:00",
+    tz = "UTC"
+) +
+    lubridate::dmonths(0.5) +
+    lubridate::dmonths(0:11)
 
-# Create a data.frame to store the sunrise/sunset times for each month
-sunrise_sunset_df <- data.frame(
-    datetime = datetime_per_month,
-    sunrise = as.POSIXct(NA),
-    sunset = as.POSIXct(NA)
-)
-
-sunrise_sunset_df <- sunrise_sunset_df |> dplyr::mutate(
-    sunrise = purrr::map_vec(datetime, ~ suntools::sunriset(
-        coords,
-        .x,
-        crs = sf::st_crs(4326),
-        direction='sunrise',
-        POSIXct.out=TRUE
-    )$time),
-    sunset = purrr::map_vec(datetime, ~ suntools::sunriset(
-        coords,
-        .x,
-        crs = sf::st_crs(4326),
-        direction='sunset',
-        POSIXct.out=TRUE
-    )$time),
-) 
-|> dplyr::mutate(
-    sunrise = lubridate::round_date(sunrise, unit = "30minute"),
-    sunset = lubridate::round_date(sunset, unit = "30minute")
-)
-
-sunrise_sunset_df |>
+demo_sunset_sunrise <- get_monthly_sunrise_sunset(centre_lat, centre_lon, datetime_per_month)
+demo_sunset_sunrise |>
     print()
+```
+
+Now we need to get an array int (months, 24*2, row, 2). This will contain for each half hour increment (per month) the farthest left pixel that is in daylight and the farthest right pixel that is in daylight.
+
+```{r}
+# we will start by pre-populating this, we know the min and max pixel that is available for each row, so we can start with that and then narrow inwards as we find the sunrise/sunset times
+
+increments_per_day <- 24 * 2
+increment_times <- seq(0, 23.5, by = 0.5)
+
+daylight_limits <- array(
+    NA_integer_,
+    dim = c(
+        length(datetime_per_month),
+        increments_per_day, # every half hour increment
+        height,
+        2
+    ),
+    dimnames = list(
+        month = 1:length(datetime_per_month),
+        time = increment_times,
+        row = 1:height,
+        limit = c("left", "right")
+    )
+)
+
+# populate the limits with the min and max available pixels for each row
+daylight_limits[,,,"left"] <- array(
+    rep(min_max_coords$min_x |> tidyr::replace_na(1), each = length(datetime_per_month) * increments_per_day),
+    dim = c(
+        length(datetime_per_month),
+        increments_per_day,
+        height
+    )
+)
+daylight_limits[,,,"right"] <- array(
+    rep(min_max_coords$max_x |> tidyr::replace_na(width), each = length(datetime_per_month) * increments_per_day),
+    dim = c(
+        length(datetime_per_month),
+        increments_per_day,
+        height
+    )
+)
+```
+
+```{r}
+# now we will iterate over each pixel and calculate the sunrise/sunset times, and then update
+avail_pixel_grid <- pixel_grid |>
+    dplyr::filter(is_available)
+time_dim <- dimnames(daylight_limits)$time |> lubridate::hm()
+
+for (ii in seq_len(nrow(avail_pixel_grid))) {
+    if (ii < 1500) {
+        next
+    }
+    this_row <- avail_pixel_grid$row[ii]
+    this_col <- avail_pixel_grid$col[ii]
+    ss_times <- get_monthly_sunrise_sunset(
+        avail_pixel_grid$lat[ii],
+        avail_pixel_grid$lon[ii],
+        datetime_per_month
+    )
+
+    curr_limits <- daylight_limits[,,this_row,]
+
+    break
+}
+
+# print(curr_limits)
+print(ss_times)
+
 ```
