@@ -214,7 +214,7 @@ for (ii in seq_len(nrow(avail_pixel_grid))) {
         time_mask <- rep(FALSE, length(time_dim))
         if (sunset_time < sunrise_time) {
             # UTC fun 
-            time_mask[time_dim >= sunset_time | time_dim <= sunrise_time] <- TRUE
+            time_mask[time_dim <= sunset_time | time_dim >= sunrise_time] <- TRUE
         } else {
             # normal case - day and night
             time_mask[time_dim >= sunrise_time & time_dim <= sunset_time] <- TRUE
@@ -239,7 +239,7 @@ saveRDS(daylight_limits, here::here("data", "daylight_limits.rds"))
 ```{r}
 daylight_limits <- readRDS(here::here("data", "daylight_limits.rds"))
 plot_daylight(
-    daylight_limits, month = 6, time = seq(0, 23, by = 2),
-    width = width, height = height, radius = radius
+    daylight_limits, month = 4, time = seq(0, 23, by = 2),
+    width = width, height = height, radius = radius, tz = "Australia/Sydney"
 )
 ```
