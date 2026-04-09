@@ -18,7 +18,7 @@ We need to evaluate the day/night status for each pixel in the raster. We will f
 We will use `suntools::sunriset()` - takes coords, datetime, crs, direction (sunrise/sunset), and whether to return POSIXct.
 
 ```{r}
-platform <- "basalt"
+platform <- "gabbro"
 debug <- FALSE
 centre_lat <- -3.84
 centre_lon <- 133.96
@@ -242,4 +242,49 @@ plot_daylight(
     daylight_limits, month = 4, time = seq(0, 23, by = 2),
     width = width, height = height, radius = radius, tz = "Australia/Sydney"
 )
+```
+
+# Convert to a binary format that can be read into pebble
+
+From what I understand we need to use `writeBin()` to write a flattened array then if we are strict about the array dims then we will know how to extract the bytes of interest on the watch side. We will use uint16 (2 bytes per int - uint16_t) as uint8 (1 byte per int) as gabbro is 260 width and uint8 maxes out at 255, oof.
+
+I have no idea what this means, it honestly sounds made up, but the endian is "little" for pebble apparently...
+
+```{r}
+daylight_limits <- readRDS(here::here("data", "daylight_limits.rds"))
+
+if (all(dim(daylight_limits) == c(12, 48, height, 2))) {
+    write_limits_bin(
+        daylight_limits,
+        platform
+    )
+} else {
+    stop("Unexpected array dimensions: ", paste(dim(daylight_limits), collapse = ", "))
+}
+```
+
+```{r}
+# spot-check a month/hour against the in-memory array
+test_month <- 6
+test_hour  <- 12
+read_back  <- read_limits_bin(
+    here::here("blue_pixel", "resources", glue::glue("limits_{platform}.bin")),
+    month = test_month, hour = test_hour, height = height
+)
+time_vals <- seq(0, 23.5, by = 0.5)
+time_key  <- dimnames(daylight_limits)$time[which.min(abs(time_vals - test_hour))]
+original  <- daylight_limits[test_month, time_key, , ]
+if (
+    identical(read_back[, "left"],  as.integer(original[, "left"]))
+    & identical(read_back[, "right"], as.integer(original[, "right"]))
+) {
+    message("Verification passed: month=", test_month, ", hour=", test_hour)
+} else {
+    stop("Verification failed: read back values do not match original array")
+}
+
+# print(glue::glue("Original left: {paste(original[, 'left'], collapse = ', ')}"))
+# print(glue::glue("Read back left: {paste(read_back[, 'left'], collapse = ', ')}"))
+# print(glue::glue("Original right: {paste(original[, 'right'], collapse = ', ')}"))
+# print(glue::glue("Read back right: {paste(read_back[, 'right'], collapse = ', ')}"))
 ```

@@ -25,10 +25,10 @@ static void prv_click_config_provider(void *context) {
     window_single_click_subscribe(BUTTON_ID_DOWN, prv_down_click_handler);
 }
 
-static void update_background_image(struct tm *tick_time) {
+static void update_background_image(struct tm *utc_time) {
     // It is my understanding that the palette bitmap types allow you to have x many colours from the palette. So 2BitPalette allows for 4 colours.
     // check if day_bitmap and night_bitmap are already loaded, if not load them
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Updating background image for time: %d:%d", tick_time->tm_hour, tick_time->tm_min);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Updating background image for time: %d:%d", utc_time->tm_hour, utc_time->tm_min);
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory START: Free=%lu Used=%lu", 
             (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
     
@@ -99,11 +99,30 @@ static void update_background_image(struct tm *tick_time) {
 
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Bitmap dimensions: %d cols x %d rows, bytes per row: %d", cols, rows, bytes_per_row);
 
-    unsigned int transition_pixel = cols*(tick_time->tm_min / 60.0);
+
+    // Get pregenerated limits array
+    ResHandle handle = resource_get_handle(RESOURCE_ID_LIMITS);
+    // We only need to allocate the size of the block we will slice from the array - (height,2) uint16_t values for left and right limits for each row, for the current time and month
+    size_t block_size_bytes = rows * 2 * sizeof(uint16_t);
+    uint16_t *s_buffer = (uint16_t*)malloc(block_size_bytes);
+
+    // time_idx: 0-based half-hour index (0..47)
+    int time_idx = utc_time->tm_hour * 2 + (utc_time->tm_min >= 30 ? 1 : 0);
+    // month: 0-based (tm_mon is already 0-based in C)
+    int month = utc_time->tm_mon;
+    int block_index = time_idx * 12 + month;
+    int byte_offset = block_index * (int)block_size_bytes;
+    resource_load_byte_range(handle, byte_offset, (uint8_t*)s_buffer, block_size_bytes);
+    // s_buffer[0..rows-1] = left limits, s_buffer[rows..2*rows-1] = right limits
+
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Limits for first row: left=%d, right=%d", s_buffer[0], s_buffer[rows]);
+
     for (unsigned int ii = 0; ii < rows; ii++) {
         unsigned int row_byte_num = ii * bytes_per_row;
         for (unsigned int jj = 0; jj < bytes_per_row; jj++) {
-            if ((jj * 2 + 1) > transition_pixel) {
+            unsigned int left_limit = s_buffer[ii];
+            unsigned int right_limit = s_buffer[ii + rows];
+            if ((jj * 2 + 1) < left_limit || jj * 2 > right_limit) {
                 // For a 4-bit palette, each byte contains 2 pixels (4 bits each)
                 // We need to remap the palette indices since night colors moved in palette
                 uint8_t byte_value = night_data[row_byte_num + jj];
@@ -115,7 +134,7 @@ static void update_background_image(struct tm *tick_time) {
                 
                 // Remap non-zero palette indices by adding n_colours_per_palette (e.g. shift from indices 1-4 to 5-8)
                 pixel2 += n_colours_per_palette;
-                if (jj * 2 > transition_pixel) {
+                if (jj * 2 < left_limit || (jj * 2 + 1) > right_limit) {
                     pixel1 += n_colours_per_palette;
                 }
 
@@ -151,6 +170,7 @@ static void update_time(bool force_bgd_update) {
     // Get a time structure
     time_t temp = time(NULL);
     struct tm *tick_time = localtime(&temp);
+    struct tm *utc_time = gmtime(&temp);
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Tick time: %d:%d:%d", tick_time->tm_hour, tick_time->tm_min, tick_time->tm_sec);
 
     // Get the current hours and minutes from tick_time
@@ -164,7 +184,7 @@ static void update_time(bool force_bgd_update) {
     // If the time is on the hour or half past
     if (tick_time->tm_min == 0 || tick_time->tm_min == 30 || force_bgd_update) {
         // Update the background image based on the time of day
-        update_background_image(tick_time);
+        update_background_image(utc_time);
     }
 }
 
