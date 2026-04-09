@@ -7,24 +7,6 @@ static GBitmap *s_day_bitmap;
 static GBitmap *s_night_bitmap;
 static BitmapLayer *s_bitmap_layer;
 
-static void prv_select_click_handler(ClickRecognizerRef recognizer, void *context) {
-    text_layer_set_text(s_time_layer, "Select");
-}
-
-static void prv_up_click_handler(ClickRecognizerRef recognizer, void *context) {
-    text_layer_set_text(s_time_layer, "Up");
-}
-
-static void prv_down_click_handler(ClickRecognizerRef recognizer, void *context) {
-    text_layer_set_text(s_time_layer, "Down");
-}
-
-static void prv_click_config_provider(void *context) {
-    window_single_click_subscribe(BUTTON_ID_SELECT, prv_select_click_handler);
-    window_single_click_subscribe(BUTTON_ID_UP, prv_up_click_handler);
-    window_single_click_subscribe(BUTTON_ID_DOWN, prv_down_click_handler);
-}
-
 static void update_background_image(struct tm *utc_time) {
     // It is my understanding that the palette bitmap types allow you to have x many colours from the palette. So 2BitPalette allows for 4 colours.
     // check if day_bitmap and night_bitmap are already loaded, if not load them
@@ -40,29 +22,29 @@ static void update_background_image(struct tm *utc_time) {
     }
 
     // Print the palette colours
-    int n_colours_per_palette = 4;
+    int n_colours_per_palette = 8;
     GColor *day_palette = gbitmap_get_palette(s_day_bitmap);
-    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Day bitmap palette:");
-    // for (int i = 0; i < n_colours_print; i++) {
-    //     GColor color = day_palette[i];
-    //     APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
-    // }
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Day bitmap palette:");
+    for (int i = 0; i < n_colours_per_palette; i++) {
+        GColor color = day_palette[i];
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+    }
     GColor *night_palette = gbitmap_get_palette(s_night_bitmap);
-    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Night bitmap palette:");
-    // for (int i = 0; i < n_colours_print; i++) {
-    //     GColor color = night_palette[i];
-    //     APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
-    // }
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Night bitmap palette:");
+    for (int i = 0; i < n_colours_per_palette; i++) {
+        GColor color = night_palette[i];
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+    }
 
     // combine the two palettes
     for (int i = 0; i < n_colours_per_palette; i++) {
         day_palette[i+n_colours_per_palette] = night_palette[i];
     }
-    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Combined bitmap palette:");
-    // for (int i = 0; i < n_colours_print; i++) {
-    //     GColor color = day_palette[i];
-    //     APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
-    // }
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Combined bitmap palette:");
+    for (int i = 0; i < n_colours_per_palette; i++) {
+        GColor color = day_palette[i];
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+    }
 
     gbitmap_set_palette(s_day_bitmap, day_palette, false);
     gbitmap_set_palette(s_night_bitmap, day_palette, false);
@@ -94,7 +76,9 @@ static void update_background_image(struct tm *utc_time) {
         s_bitmap = NULL;
     }
 
-    uint8_t *comb_data = malloc(bytes_per_row * rows);
+    // Create the blank bitmap first and use its internal buffer directly to avoid malloc/free lifetme issues
+    s_bitmap = gbitmap_create_blank(bounds.size, gbitmap_get_format(s_day_bitmap));
+    uint8_t *comb_data = gbitmap_get_data(s_bitmap);
     memcpy(comb_data, gbitmap_get_data(s_day_bitmap), bytes_per_row * rows);
 
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Bitmap dimensions: %d cols x %d rows, bytes per row: %d", cols, rows, bytes_per_row);
@@ -102,9 +86,9 @@ static void update_background_image(struct tm *utc_time) {
 
     // Get pregenerated limits array
     ResHandle handle = resource_get_handle(RESOURCE_ID_LIMITS);
-    // We only need to allocate the size of the block we will slice from the array - (height,2) uint16_t values for left and right limits for each row, for the current time and month
-    size_t block_size_bytes = rows * 2 * sizeof(uint16_t);
-    uint16_t *s_buffer = (uint16_t*)malloc(block_size_bytes);
+    // We only need to allocate the size of the block we will slice from the array - (height,2) uint8_t values for left and right limits for each row, for the current time and month
+    size_t block_size_bytes = rows * 2 * sizeof(uint8_t);
+    uint8_t *s_buffer = (uint8_t*)malloc(block_size_bytes);
 
     // time_idx: 0-based half-hour index (0..47)
     int time_idx = utc_time->tm_hour * 2 + (utc_time->tm_min >= 30 ? 1 : 0);
@@ -143,17 +127,16 @@ static void update_background_image(struct tm *utc_time) {
             }
         }
     }
+   
+    // Free the buffer after use
+    if (s_buffer) {
+        free(s_buffer);
+    }
         
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory merged: Free=%lu Used=%lu", 
             (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
 
-    // create blank bitmap
-    s_bitmap = gbitmap_create_blank(bounds.size, gbitmap_get_format(s_day_bitmap));
-    // copy the combined data into the new bitmap
-    gbitmap_set_data(s_bitmap, comb_data, gbitmap_get_format(s_day_bitmap), bytes_per_row, false);
-    free(comb_data);
-
-    // set the palette
+    // set the palette on the already-created bitmap
     gbitmap_set_palette(s_bitmap, day_palette, false);
         
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory assigned: Free=%lu Used=%lu", 
@@ -171,12 +154,12 @@ static void update_time(bool force_bgd_update) {
     time_t temp = time(NULL);
     struct tm *tick_time = localtime(&temp);
     struct tm *utc_time = gmtime(&temp);
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Tick time: %d:%d:%d", tick_time->tm_hour, tick_time->tm_min, tick_time->tm_sec);
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Tick time: %d:%d:%d", tick_time->tm_hour, tick_time->tm_min, tick_time->tm_sec);
 
     // Get the current hours and minutes from tick_time
     static char s_time_buffer[8];
     strftime(s_time_buffer, sizeof(s_time_buffer), clock_is_24h_style() ? "%H:%M" : "%I:%M", tick_time);
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Formatted time: %s", s_time_buffer);
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Formatted time: %s", s_time_buffer);
 
     // // Display this time on the created TextLayer
     text_layer_set_text(s_time_layer, s_time_buffer);
@@ -196,6 +179,8 @@ static void prv_window_load(Window *window) {
     // Get the root layer and its bounds for 
     Layer *window_layer = window_get_root_layer(window);
     GRect bounds = layer_get_bounds(window_layer);
+
+    window_set_background_color(window, GColorBlack);
 
     // Display the time GRect (xul,yul, width, height)
     const int layer_height = 42;
@@ -229,7 +214,7 @@ static void prv_window_unload(Window *window) {
 static void prv_init(void) {
     // Entry point: create the main window and set up handlers
     s_window = window_create();
-    window_set_click_config_provider(s_window, prv_click_config_provider);
+    // window_set_click_config_provider(s_window, prv_click_config_provider);
     window_set_window_handlers(s_window, (WindowHandlers) {
         .load = prv_window_load,
         .unload = prv_window_unload,

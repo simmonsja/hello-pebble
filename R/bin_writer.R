@@ -5,9 +5,9 @@ write_limits_bin <- function(
     # limits_array: [month, time, row, limit]
     # Binary layout: sequential blocks, one per (month, time) pair.
     # Block order: for time 1..n_times (outer), for month 1..n_months (inner).
-    # Each block: height left uint16 LE values, then height right uint16 LE values.
+    # Each block: height left uint8 values, then height right uint8 values.
     # Block index (0-based) = (time_idx - 1) * n_months + (month - 1)
-    # Byte offset = block_index * height * 2 * 2
+    # Byte offset = block_index * height * 2
     dims <- dim(limits_array)
     n_months <- dims[1]
     n_times <- dims[2]
@@ -27,7 +27,7 @@ write_limits_bin <- function(
             writeBin(
                 c(left_vals, right_vals),
                 con,
-                size = 2L,
+                size = 1L,
                 endian = "little"
             )
         }
@@ -36,7 +36,7 @@ write_limits_bin <- function(
 
 
 # Read back a (height x 2) slice for a given month and hour from the binary file.
-# Binary layout: blocks of (height * 2) uint16 LE values.
+# Binary layout: blocks of (height * 2) uint8 values.
 # Block index (0-based) = (time_idx - 1) * n_months + (month - 1)
 # Each block: height left values then height right values.
 read_limits_bin <- function(
@@ -52,7 +52,7 @@ read_limits_bin <- function(
     block_size <- height * 2L
 
     block_index <- (time_idx - 1L) * n_months + (month - 1L)
-    byte_offset <- block_index * block_size * 2L
+    byte_offset <- block_index * block_size
 
     con <- file(path, "rb")
     on.exit(close(con))
@@ -61,7 +61,7 @@ read_limits_bin <- function(
         con,
         integer(),
         n = block_size,
-        size = 2L,
+        size = 1L,
         signed = FALSE,
         endian = "little"
     )
