@@ -6,6 +6,7 @@ static GBitmap *s_bitmap;
 static GBitmap *s_day_bitmap;
 static GBitmap *s_night_bitmap;
 static BitmapLayer *s_bitmap_layer;
+static bool s_palettes_combined = false;
 
 static void update_background_image(struct tm *utc_time) {
     // It is my understanding that the palette bitmap types allow you to have x many colours from the palette. So 2BitPalette allows for 4 colours.
@@ -16,53 +17,48 @@ static void update_background_image(struct tm *utc_time) {
     
     if (s_day_bitmap == NULL) {
         s_day_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLUE_MARBLE);
+        s_palettes_combined = false; // reset this flag whenever we load new bitmaps to ensure palettes are combined correctly
     }
     if (s_night_bitmap == NULL) {
         s_night_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLACK_MARBLE);
+        s_palettes_combined = false;
     }
 
     // Print the palette colours
     int n_colours_per_palette = 8;
     GColor *day_palette = gbitmap_get_palette(s_day_bitmap);
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Day bitmap palette:");
-    for (int i = 0; i < n_colours_per_palette; i++) {
-        GColor color = day_palette[i];
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
-    }
-    GColor *night_palette = gbitmap_get_palette(s_night_bitmap);
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Night bitmap palette:");
-    for (int i = 0; i < n_colours_per_palette; i++) {
-        GColor color = night_palette[i];
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+
+    if (!s_palettes_combined) {
+        // Only combine if we are reloading the bitmaps otherwise we garble the palette
+        GColor *night_palette = gbitmap_get_palette(s_night_bitmap);
+        // combine the two palettes
+        for (int i = 0; i < n_colours_per_palette; i++) {
+            day_palette[i+n_colours_per_palette] = night_palette[i];
+        }
+
+        // logging
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Day bitmap palette:");
+        for (int i = 0; i < n_colours_per_palette; i++) {
+            GColor color = day_palette[i];
+            APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+        }
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Night bitmap palette:");
+        for (int i = 0; i < n_colours_per_palette; i++) {
+            GColor color = night_palette[i];
+            APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+        }
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Combined bitmap palette:");
+        for (int i = 0; i < n_colours_per_palette*2; i++) {
+            GColor color = day_palette[i];
+            APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+        }
+
+        gbitmap_set_palette(s_day_bitmap, day_palette, false);
+        gbitmap_set_palette(s_night_bitmap, day_palette, false);
+        s_palettes_combined = true;
     }
 
-    // combine the two palettes
-    for (int i = 0; i < n_colours_per_palette; i++) {
-        day_palette[i+n_colours_per_palette] = night_palette[i];
-    }
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Combined bitmap palette:");
-    for (int i = 0; i < n_colours_per_palette; i++) {
-        GColor color = day_palette[i];
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
-    }
-
-    gbitmap_set_palette(s_day_bitmap, day_palette, false);
-    gbitmap_set_palette(s_night_bitmap, day_palette, false);
-
-    // Switching example
-    // // The background image will be based on the time of day, for 7pm-7am we will show RESOURCE_ID_BLUE_MARBLE and for 7am-7pm we will show RESOURCE_ID_BLUE_MARBLE
-    // // if (tick_time->tm_hour >= 19 || tick_time->tm_hour < 7) {
-    // // debug: we'll switch the background every minute instead of every 12 hours
-    // if (tick_time->tm_min % 2) {
-    //     APP_LOG(APP_LOG_LEVEL_DEBUG, "It's night time, using night bitmap");
-    //     // Load the bitmap resource as GBitmap
-    //     s_bitmap = s_night_bitmap;
-    // } else {
-    //     APP_LOG(APP_LOG_LEVEL_DEBUG, "It's day time, using day bitmap");
-    //     s_bitmap = s_day_bitmap;
-    // }
-
-    // Knitting example - combine day and night bitmaps
+    // Knitting - combine day and night bitmaps
     // create a copy of day then modify
     uint8_t *night_data = gbitmap_get_data(s_night_bitmap);
     unsigned int bytes_per_row = gbitmap_get_bytes_per_row(s_day_bitmap);
@@ -71,18 +67,17 @@ static void update_background_image(struct tm *utc_time) {
     unsigned int cols = bounds.size.w;
 
     // Before creating new bitmap, destroy the old one
-    if (s_bitmap != NULL && s_bitmap != s_day_bitmap && s_bitmap != s_night_bitmap) {
+    if (s_bitmap != NULL) {
         gbitmap_destroy(s_bitmap);
         s_bitmap = NULL;
     }
 
-    // Create the blank bitmap first and use its internal buffer directly to avoid malloc/free lifetme issues
+    // Create the blank bitmap first and use its internal buffer directly to avoid malloc/free issues
     s_bitmap = gbitmap_create_blank(bounds.size, gbitmap_get_format(s_day_bitmap));
     uint8_t *comb_data = gbitmap_get_data(s_bitmap);
     memcpy(comb_data, gbitmap_get_data(s_day_bitmap), bytes_per_row * rows);
 
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Bitmap dimensions: %d cols x %d rows, bytes per row: %d", cols, rows, bytes_per_row);
-
 
     // Get pregenerated limits array
     ResHandle handle = resource_get_handle(RESOURCE_ID_LIMITS);
@@ -99,7 +94,7 @@ static void update_background_image(struct tm *utc_time) {
     resource_load_byte_range(handle, byte_offset, (uint8_t*)s_buffer, block_size_bytes);
     // s_buffer[0..rows-1] = left limits, s_buffer[rows..2*rows-1] = right limits
 
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Limits for first row: left=%d, right=%d", s_buffer[0], s_buffer[rows]);
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Limits for first row: left=%d, right=%d", s_buffer[0], s_buffer[rows]);
 
     for (unsigned int ii = 0; ii < rows; ii++) {
         unsigned int row_byte_num = ii * bytes_per_row;

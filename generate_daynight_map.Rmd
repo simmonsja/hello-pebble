@@ -232,12 +232,12 @@ for (ii in seq_len(nrow(avail_pixel_grid))) {
 cli::cli_progress_done(id = pb)
 
 # save to RDS file
-saveRDS(daylight_limits, here::here("data", "daylight_limits.rds"))
+saveRDS(daylight_limits, here::here("data", glue::glue("daylight_limits_{package}.rds")))
 ```
 
 
 ```{r}
-daylight_limits <- readRDS(here::here("data", "daylight_limits.rds"))
+daylight_limits <- readRDS(here::here("data", glue::glue("daylight_limits_{package}.rds")))
 plot_daylight(
     daylight_limits, month = 4, time = seq(0, 23, by = 2),
     width = width, height = height, radius = radius, tz = "Australia/Sydney"
@@ -251,7 +251,7 @@ From what I understand we need to use `writeBin()` to write a flattened array th
 I have no idea what this means, it honestly sounds made up, but the endian is "little" for pebble apparently...
 
 ```{r}
-daylight_limits <- readRDS(here::here("data", "daylight_limits.rds"))
+daylight_limits <- readRDS(here::here("data", glue::glue("daylight_limits_{package}.rds")))
 
 if (all(dim(daylight_limits) == c(12, 48, height, 2))) {
     write_limits_bin(
