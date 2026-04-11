@@ -86,9 +86,9 @@ static void update_background_image(struct tm *utc_time) {
     uint8_t *s_buffer = (uint8_t*)malloc(block_size_bytes);
 
     // time_idx: 0-based half-hour index (0..47)
-    int time_idx = utc_time->tm_hour * 2 + (utc_time->tm_min >= 30 ? 1 : 0);
+    int time_idx = 0; // utc_time->tm_hour * 2 + (utc_time->tm_min >= 30 ? 1 : 0);
     // month: 0-based (tm_mon is already 0-based in C)
-    int month = utc_time->tm_mon;
+    int month = 6; //utc_time->tm_mon;
     int block_index = time_idx * 12 + month;
     int byte_offset = block_index * (int)block_size_bytes;
     resource_load_byte_range(handle, byte_offset, (uint8_t*)s_buffer, block_size_bytes);

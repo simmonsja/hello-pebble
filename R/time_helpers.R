@@ -5,7 +5,6 @@ get_monthly_sunrise_sunset <- function(lat, lon, datetime) {
         sunrise = as.POSIXct(NA),
         sunset = as.POSIXct(NA)
     )
-
     if (is.na(lat) | is.na(lon)) {
         return(sunrise_sunset_df)
     }
@@ -43,6 +42,29 @@ get_monthly_sunrise_sunset <- function(lat, lon, datetime) {
             month = lubridate::month(datetime)
         ) |>
         dplyr::select(-datetime)
+
+    # Handle polar latitudes: sunriset returns NA for both perpetual day
+    # and perpetual night. Use solarpos elevation at noon to disambiguate.
+    na_rows <- which(
+        is.na(sunrise_sunset_df$sunrise) | is.na(sunrise_sunset_df$sunset)
+    )
+    if (length(na_rows) > 0) {
+        for (idx in na_rows) {
+            noon_dt <- datetime[idx]
+            elev <- suntools::solarpos(
+                coords,
+                noon_dt,
+                crs = sf::st_crs(4326)
+            )[, 2]
+            if (elev > 0) {
+                # Perpetual day: sun never sets
+                sunrise_sunset_df$sunrise[idx] <- 0
+                sunrise_sunset_df$sunset[idx] <- 23.5
+            }
+            # Perpetual night (elev <= 0): leave as NA, main loop will skip
+        }
+    }
+
     return(sunrise_sunset_df)
 }
 

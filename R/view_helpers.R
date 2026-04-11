@@ -1,3 +1,84 @@
+plot_daylight_bool <- function(
+    daylight_bool,
+    month,
+    times,
+    width,
+    height,
+    radius,
+    tz = "UTC",
+    night_colour = "#0a0a2a",
+    day_colour = "#87ceeb"
+) {
+    time_labels <- as.numeric(dimnames(daylight_bool)$time)
+    cx <- width / 2
+    cy <- height / 2
+
+    base_grid <- expand.grid(
+        col = seq_len(width),
+        row = seq_len(height)
+    ) |>
+        dplyr::mutate(
+            in_circle = sqrt((col - cx)^2 + (row - cy)^2) <= radius
+        )
+
+    utc_times <- sapply(times, function(t) {
+        local_dt <- lubridate::make_datetime(
+            2026,
+            month,
+            15,
+            hour = as.integer(t),
+            min = as.integer(round((t %% 1) * 60)),
+            tz = tz
+        )
+        utc_dt <- lubridate::with_tz(local_dt, "UTC")
+        lubridate::hour(utc_dt) + lubridate::minute(utc_dt) / 60
+    })
+
+    pixel_df <- lapply(seq_along(times), function(ii) {
+        time_idx <- which.min(abs(time_labels - utc_times[ii]))
+        # Extract the height x width boolean matrix for this month/time
+        slice <- daylight_bool[month, time_idx, , ]
+
+        # Convert to long form
+        lit_df <- expand.grid(
+            row = seq_len(height),
+            col = seq_len(width)
+        ) |>
+            dplyr::mutate(
+                is_day = as.vector(slice)
+            )
+
+        base_grid |>
+            dplyr::left_join(lit_df, by = c("row", "col")) |>
+            dplyr::mutate(
+                state = dplyr::case_when(
+                    !in_circle ~ NA_character_,
+                    is_day ~ "day",
+                    TRUE ~ "night"
+                ),
+                time_label = sprintf("%02d:00", as.integer(times[ii]))
+            )
+    }) |>
+        dplyr::bind_rows()
+
+    pixel_df$time_label <- factor(
+        pixel_df$time_label,
+        levels = unique(pixel_df$time_label)
+    )
+
+    ggplot2::ggplot(pixel_df, ggplot2::aes(x = col, y = -row, fill = state)) +
+        ggplot2::geom_raster() +
+        ggplot2::scale_fill_manual(
+            values = c(night = night_colour, day = day_colour),
+            na.value = "transparent",
+            name = NULL
+        ) +
+        ggplot2::coord_fixed() +
+        ggplot2::facet_wrap(~time_label) +
+        ggplot2::theme_void() +
+        ggplot2::labs(title = sprintf("Month %d - tz: %s", month, tz))
+}
+
 plot_daylight <- function(
     daylight_limits,
     month,

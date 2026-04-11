@@ -11,7 +11,7 @@ We need to evaluate the day/night status for each pixel in the raster. We will f
 - Generate a raster to lat/lon coordinate converter
 - Generate a grid of times - middle of every month for the next 12 months
   - we presume the yearly variation is tiny
-  - the bigger issue is the within-month variability but hey, we are also doing this at an extremely coarse resolution so *shrugs*
+  - the bigger issue is the within-month variability but hey, we are also doing this at an extremely coarse resolution from a hand drawn image (I'm no artist) with a basic projection, so *shrugs*
 - Calculate the sunrise/sunset time for each pixel in the raster
 - Convert this into the most minimal representation for the watch to recreate the day/night transition map
 
@@ -20,9 +20,12 @@ We will use `suntools::sunriset()` - takes coords, datetime, crs, direction (sun
 ```{r}
 platform <- "basalt"
 debug <- FALSE
+# Crudely I have estimated the centre pixel of the image
 centre_lat <- -3.84
 centre_lon <- 133.96
 ```
+
+## Load the image
 
 ```{r}
 day_image_path <- here::here("blue_pixel","resources",glue::glue("blue_marble_{platform}.png"))
@@ -68,6 +71,16 @@ if (debug) {
         height = height
     )
 }
+
+project_to_lat_lon(
+    x = 67,
+    y = 156,
+    lat_ref = centre_lat,
+    lon_ref = centre_lon,
+    radius = radius,
+    width = width,
+    height = height
+)
 ```
 
 # Generate the lat/lon coordinates for each pixel in the raster
@@ -140,54 +153,38 @@ demo_sunset_sunrise |>
     print()
 ```
 
-Now we need to get an array int (months, 24*2, row, 2). This will contain for each half hour increment (per month) the farthest left pixel that is in daylight and the farthest right pixel that is in daylight.
+Create a full boolean pixel array `(months, time_slots, rows, cols)` where TRUE = daylight. This gives us a complete unconstrained representation we can visualise and smooth before compressing to left/right limits later.
 
 ```{r}
-# we will start by pre-populating this, we know the min and max pixel that is available for each row, so we can start with that and then narrow inwards as we find the sunrise/sunset times
-
 increments_per_day <- 24 * 2
 increment_times <- seq(0, 23.5, by = 0.5)
 
-daylight_limits <- array(
-    NA_integer_,
+daylight_bool <- array(
+    NA,
     dim = c(
         length(datetime_per_month),
-        increments_per_day, # every half hour increment
+        increments_per_day,
         height,
-        2
+        width
     ),
     dimnames = list(
         month = 1:length(datetime_per_month),
         time = increment_times,
         row = 1:height,
-        limit = c("left", "right")
+        col = 1:width
     )
 )
-
-# populate the limits with the min and max available pixels for each row
-daylight_limits[,,,"left"] <- array(
-    rep(min_max_coords$max_x |> tidyr::replace_na(width), each = length(datetime_per_month) * increments_per_day),
-    dim = c(
-        length(datetime_per_month),
-        increments_per_day,
-        height
-    )
-)
-daylight_limits[,,,"right"] <- array(
-    rep(min_max_coords$min_x |> tidyr::replace_na(1), each = length(datetime_per_month) * increments_per_day),
-    dim = c(
-        length(datetime_per_month),
-        increments_per_day,
-        height
-    )
-)
+message("daylight_bool size: ", format(object.size(daylight_bool), units = "MB"))
 ```
 
 ```{r}
-# now we will iterate over each pixel and calculate the sunrise/sunset times, and then update
 avail_pixel_grid <- pixel_grid |>
-    dplyr::filter(is_available)
-time_dim <- dimnames(daylight_limits)$time |> as.numeric()
+    dplyr::filter(is_available) |>
+    dplyr::filter(!is.na(lat) & !is.na(lon))
+
+message("Processing ", nrow(avail_pixel_grid), " valid pixels (with non-NA lat/lon)")
+
+time_dim <- dimnames(daylight_bool)$time |> as.numeric()
 
 pb <- cli::cli_progress_bar(total = nrow(avail_pixel_grid), format = "{cli::pb_bar} {cli::pb_current}/{cli::pb_total} | ETA: {cli::pb_eta}")
 
@@ -195,6 +192,11 @@ for (ii in seq_len(nrow(avail_pixel_grid))) {
     cli::cli_progress_update(id = pb)
     this_row <- avail_pixel_grid$row[ii]
     this_col <- avail_pixel_grid$col[ii]
+
+    # Mark this pixel as processed: default to FALSE (night) for all slots.
+    # Unprocessed pixels (NA lat/lon, outside circle) remain NA.
+    daylight_bool[, , this_row, this_col] <- FALSE
+
     ss_times <- get_monthly_sunrise_sunset(
         avail_pixel_grid$lat[ii],
         avail_pixel_grid$lon[ii],
@@ -206,42 +208,65 @@ for (ii in seq_len(nrow(avail_pixel_grid))) {
         sunset_time <- ss_times$sunset[month_idx]
 
         if (is.na(sunrise_time) | is.na(sunset_time)) {
-            # if we don't have sunrise/sunset times, then we assume it's either always day or always night, so we skip
-            next
+            next  # perpetual night - already FALSE from above
         }
 
         # time mask
         time_mask <- rep(FALSE, length(time_dim))
         if (sunset_time < sunrise_time) {
-            # UTC fun 
             time_mask[time_dim <= sunset_time | time_dim >= sunrise_time] <- TRUE
         } else {
-            # normal case - day and night
             time_mask[time_dim >= sunrise_time & time_dim <= sunset_time] <- TRUE
         }
 
-        # ugly mutate
-        slice_left <- daylight_limits[month_idx, time_mask, this_row, "left"]
-        slice_right <- daylight_limits[month_idx, time_mask, this_row, "right"]
-        slice_left[slice_left > this_col] <- this_col
-        slice_right[slice_right < this_col] <- this_col
-        daylight_limits[month_idx, time_mask, this_row, "left"] <- slice_left
-        daylight_limits[month_idx, time_mask, this_row, "right"] <- slice_right
+        daylight_bool[month_idx, time_mask, this_row, this_col] <- TRUE
     }
 }
 cli::cli_progress_done(id = pb)
 
-# save to RDS file
-saveRDS(daylight_limits, here::here("data", glue::glue("daylight_limits_{package}.rds")))
+message("Main loop done. Checking for NA foreground pixels to fill...")
+
+# Nearest-neighbor fill for foreground pixels that have NA (bad projection edges)
+# These are pixels marked available in the image but project_to_lat_lon returned NA
+na_fg_pixels <- pixel_grid |>
+    dplyr::filter(is_available, is.na(lat) | is.na(lon))
+
+if (nrow(na_fg_pixels) > 0) {
+    message("Filling ", nrow(na_fg_pixels), " NA foreground pixels via nearest-neighbor")
+    valid_coords <- avail_pixel_grid[, c("row", "col")]
+
+    for (i in seq_len(nrow(na_fg_pixels))) {
+        target_row <- na_fg_pixels$row[i]
+        target_col <- na_fg_pixels$col[i]
+
+        # Find nearest valid pixel by Euclidean distance
+        dists <- (valid_coords$row - target_row)^2 + (valid_coords$col - target_col)^2
+        nearest_idx <- which.min(dists)
+        nearest_row <- valid_coords$row[nearest_idx]
+        nearest_col <- valid_coords$col[nearest_idx]
+
+        # Copy all (month, time) values from nearest valid pixel
+        daylight_bool[, , target_row, target_col] <- daylight_bool[, , nearest_row, nearest_col]
+    }
+    message("Nearest-neighbor fill complete")
+} else {
+    message("No NA foreground pixels to fill")
+}
+
+saveRDS(daylight_bool, here::here("data", glue::glue("daylight_bool_{platform}.rds")))
+message("Saved daylight_bool to data/daylight_bool_", platform, ".rds")
 ```
 
 
 ```{r}
-daylight_limits <- readRDS(here::here("data", glue::glue("daylight_limits_{package}.rds")))
-plot_daylight(
-    daylight_limits, month = 4, time = seq(0, 23, by = 2),
+daylight_bool <- readRDS(here::here("data", glue::glue("daylight_bool_{platform}.rds")))
+plot_daylight_bool(
+    daylight_bool, month = 6, times = seq(0, 23, by = 2),
     width = width, height = height, radius = radius, tz = "Australia/Sydney"
 )
+# Quick summary of a single time slice
+slice <- daylight_bool[6, 29, , 1:50]
+message("Month 6, time 14.0: ", sum(slice), " lit pixels out of ", length(slice))
 ```
 
 # Convert to a binary format that can be read into pebble
@@ -251,7 +276,7 @@ From what I understand we need to use `writeBin()` to write a flattened array th
 I have no idea what this means, it honestly sounds made up, but the endian is "little" for pebble apparently...
 
 ```{r}
-daylight_limits <- readRDS(here::here("data", glue::glue("daylight_limits_{package}.rds")))
+daylight_limits <- readRDS(here::here("data", glue::glue("daylight_limits_{platform}.rds")))
 
 if (all(dim(daylight_limits) == c(12, 48, height, 2))) {
     write_limits_bin(
@@ -288,3 +313,4 @@ if (
 # print(glue::glue("Original right: {paste(original[, 'right'], collapse = ', ')}"))
 # print(glue::glue("Read back right: {paste(read_back[, 'right'], collapse = ', ')}"))
 ```
+
