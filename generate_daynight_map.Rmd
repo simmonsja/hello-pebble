@@ -71,16 +71,6 @@ if (debug) {
         height = height
     )
 }
-
-project_to_lat_lon(
-    x = 67,
-    y = 156,
-    lat_ref = centre_lat,
-    lon_ref = centre_lon,
-    radius = radius,
-    width = width,
-    height = height
-)
 ```
 
 # Generate the lat/lon coordinates for each pixel in the raster
@@ -138,6 +128,8 @@ if (debug) {
         coord_fixed()
 }
 ```
+
+## Check the sunrise/sunset time function
 
 ```{r}
 # Get one time per month for the next 12 months
@@ -225,11 +217,22 @@ for (ii in seq_len(nrow(avail_pixel_grid))) {
 cli::cli_progress_done(id = pb)
 
 message("Main loop done. Checking for NA foreground pixels to fill...")
+```
+
+Sometimes there are pixels that can't be dealt with (weird projection or suntools will not provide an output for them). So we'll just adopt an approach of filling any NA foreground pixels with the nearest neighbour that has a valid day/night pattern.
+
+```{r}
+#save the intermediate result before filling NA pixels, just for posterity
+saveRDS(daylight_bool, here::here("data", glue::glue("daylight_bool_pre_fill_{platform}.rds")))
+message("Saved intermediate daylight_bool (pre-fill) to data/daylight_bool_pre_fill_", platform, ".rds")
 
 # Nearest-neighbor fill for foreground pixels that have NA (bad projection edges)
 # These are pixels marked available in the image but project_to_lat_lon returned NA
 na_fg_pixels <- pixel_grid |>
-    dplyr::filter(is_available, is.na(lat) | is.na(lon))
+    dplyr::filter(
+        is_available,
+        purrr::map2_lgl(row, col, ~ anyNA(daylight_bool[, , .x, .y]))
+    )
 
 if (nrow(na_fg_pixels) > 0) {
     message("Filling ", nrow(na_fg_pixels), " NA foreground pixels via nearest-neighbor")
@@ -257,6 +260,7 @@ saveRDS(daylight_bool, here::here("data", glue::glue("daylight_bool_{platform}.r
 message("Saved daylight_bool to data/daylight_bool_", platform, ".rds")
 ```
 
+## Checking plots
 
 ```{r}
 daylight_bool <- readRDS(here::here("data", glue::glue("daylight_bool_{platform}.rds")))
@@ -265,7 +269,7 @@ plot_daylight_bool(
     width = width, height = height, radius = radius, tz = "Australia/Sydney"
 )
 # Quick summary of a single time slice
-slice <- daylight_bool[6, 29, , 1:50]
+slice <- daylight_bool[6, 9, , 1:50]
 message("Month 6, time 14.0: ", sum(slice), " lit pixels out of ", length(slice))
 ```
 
@@ -276,17 +280,49 @@ From what I understand we need to use `writeBin()` to write a flattened array th
 I have no idea what this means, it honestly sounds made up, but the endian is "little" for pebble apparently...
 
 ```{r}
-daylight_limits <- readRDS(here::here("data", glue::glue("daylight_limits_{platform}.rds")))
+daylight_bool <- readRDS(here::here("data", glue::glue("daylight_bool_{platform}.rds")))
+daylight_limits <- compress_bool_to_limits(daylight_bool, min_max_coords)
+message("Compressed to limits array: ", paste(dim(daylight_limits), collapse = " x "))
+saveRDS(daylight_limits, here::here("data", glue::glue("daylight_limits_{platform}.rds")))
+```
 
-if (all(dim(daylight_limits) == c(12, 48, height, 2))) {
+```{r}
+# Verify the compression/decompression visually
+plot_daylight(
+    daylight_limits, month = 6, times = seq(0, 23, by = 2),
+    width = width, height = height, radius = radius,
+    min_max_coords = min_max_coords, tz = "Australia/Sydney"
+)
+```
+
+```{r}
+# Detailed single-time plot showing boundary pixels
+plot_daylight_single(
+    daylight_limits, month = 6, time = 16,
+    width = width, height = height, radius = radius,
+    min_max_coords = min_max_coords, tz = "Australia/Sydney"
+)
+
+# Quick summary of a single time slice
+slice <- daylight_limits[6, 13, ,]
+```
+
+## Write to binary for peb
+
+```{r}
+stored_rows <- ceiling(height / 2)
+if (all(dim(daylight_limits) == c(12, 48, stored_rows, 3))) {
     write_limits_bin(
         daylight_limits,
         platform
     )
+    message("Binary written. Expected size: ", 12 * 48 * stored_rows * 3, " bytes")
 } else {
     stop("Unexpected array dimensions: ", paste(dim(daylight_limits), collapse = ", "))
 }
 ```
+
+Briefly check all went well
 
 ```{r}
 # spot-check a month/hour against the in-memory array
@@ -294,7 +330,7 @@ test_month <- 6
 test_hour  <- 12
 read_back  <- read_limits_bin(
     here::here("blue_pixel", "resources", glue::glue("limits_{platform}.bin")),
-    month = test_month, hour = test_hour, height = height
+    month = test_month, hour = test_hour, height = stored_rows
 )
 time_vals <- seq(0, 23.5, by = 0.5)
 time_key  <- dimnames(daylight_limits)$time[which.min(abs(time_vals - test_hour))]
@@ -302,15 +338,11 @@ original  <- daylight_limits[test_month, time_key, , ]
 if (
     identical(read_back[, "left"],  as.integer(original[, "left"]))
     & identical(read_back[, "right"], as.integer(original[, "right"]))
+    & identical(read_back[, "left2"], as.integer(original[, "left2"]))
 ) {
     message("Verification passed: month=", test_month, ", hour=", test_hour)
 } else {
     stop("Verification failed: read back values do not match original array")
 }
-
-# print(glue::glue("Original left: {paste(original[, 'left'], collapse = ', ')}"))
-# print(glue::glue("Read back left: {paste(read_back[, 'left'], collapse = ', ')}"))
-# print(glue::glue("Original right: {paste(original[, 'right'], collapse = ', ')}"))
-# print(glue::glue("Read back right: {paste(read_back[, 'right'], collapse = ', ')}"))
 ```
 

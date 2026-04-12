@@ -81,43 +81,62 @@ static void update_background_image(struct tm *utc_time) {
 
     // Get pregenerated limits array
     ResHandle handle = resource_get_handle(RESOURCE_ID_LIMITS);
-    // We only need to allocate the size of the block we will slice from the array - (height,2) uint8_t values for left and right limits for each row, for the current time and month
-    size_t block_size_bytes = rows * 2 * sizeof(uint8_t);
+    // Limits binary stores every other row (half the display rows) with 3 limit columns
+    unsigned int stored_rows = (rows + 1) / 2;  // ceil(rows/2) = 84 for 168
+    size_t block_size_bytes = stored_rows * 3 * sizeof(uint8_t);
     uint8_t *s_buffer = (uint8_t*)malloc(block_size_bytes);
 
     // time_idx: 0-based half-hour index (0..47)
-    int time_idx = 0; // utc_time->tm_hour * 2 + (utc_time->tm_min >= 30 ? 1 : 0);
+    int time_idx = utc_time->tm_hour * 2 + (utc_time->tm_min >= 30 ? 1 : 0);
     // month: 0-based (tm_mon is already 0-based in C)
-    int month = 6; //utc_time->tm_mon;
+    int month = utc_time->tm_mon;
     int block_index = time_idx * 12 + month;
     int byte_offset = block_index * (int)block_size_bytes;
     resource_load_byte_range(handle, byte_offset, (uint8_t*)s_buffer, block_size_bytes);
-    // s_buffer[0..rows-1] = left limits, s_buffer[rows..2*rows-1] = right limits
-
-    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Limits for first row: left=%d, right=%d", s_buffer[0], s_buffer[rows]);
+    // s_buffer layout: [left × stored_rows] [right × stored_rows] [left2 × stored_rows]
 
     for (unsigned int ii = 0; ii < rows; ii++) {
         unsigned int row_byte_num = ii * bytes_per_row;
+        unsigned int stored_row = ii / 2;  // nearest-neighbor: map display row to stored row
+        unsigned int left_limit = s_buffer[stored_row];
+        unsigned int right_limit = s_buffer[stored_row + stored_rows];
+        unsigned int left2_limit = s_buffer[stored_row + 2 * stored_rows];
+
         for (unsigned int jj = 0; jj < bytes_per_row; jj++) {
-            unsigned int left_limit = s_buffer[ii];
-            unsigned int right_limit = s_buffer[ii + rows];
-            if ((jj * 2 + 1) < left_limit || jj * 2 > right_limit) {
-                // For a 4-bit palette, each byte contains 2 pixels (4 bits each)
-                // We need to remap the palette indices since night colors moved in palette
+            unsigned int px_left = jj * 2;
+            unsigned int px_right = jj * 2 + 1;
+
+            // Determine if each pixel in this byte is night
+            // Day if: (px >= left && px <= right) || (left2 <= max_col && px >= left2)
+            // Night otherwise. left > right means all-night row.
+            bool px1_night = true;
+            bool px2_night = true;
+
+            // Check primary daylight block (left..right)
+            if (left_limit <= right_limit) {
+                if (px_left >= left_limit && px_left <= right_limit) px1_night = false;
+                if (px_right >= left_limit && px_right <= right_limit) px2_night = false;
+            }
+
+            // Check secondary daylight block (left2..end of available pixels)
+            // left2 > right_limit signals no second block (sentinel)
+            // but we also need left2 to be a valid column
+            if (left2_limit > left_limit && left2_limit <= right_limit) {
+                // left2 is within the primary block - not a valid second block
+            } else if (left2_limit > 0 && left2_limit < cols) {
+                // Valid second block from left2 to end of available pixels in row
+                if (px_left >= left2_limit) px1_night = false;
+                if (px_right >= left2_limit) px2_night = false;
+            }
+
+            if (px1_night || px2_night) {
                 uint8_t byte_value = night_data[row_byte_num + jj];
-                
-                // Extract the two 4-bit pixel values
-                // & 0x0F masks to get the last 4 bits, >> shifts bits right so that same mask gets the first 4 bits
                 uint8_t pixel1 = (byte_value >> 4) & 0x0F;
                 uint8_t pixel2 = byte_value & 0x0F;
-                
-                // Remap non-zero palette indices by adding n_colours_per_palette (e.g. shift from indices 1-4 to 5-8)
-                pixel2 += n_colours_per_palette;
-                if (jj * 2 < left_limit || (jj * 2 + 1) > right_limit) {
-                    pixel1 += n_colours_per_palette;
-                }
 
-                // Recombine the remapped pixels
+                if (px1_night) pixel1 += n_colours_per_palette;
+                if (px2_night) pixel2 += n_colours_per_palette;
+
                 comb_data[row_byte_num + jj] = (pixel1 << 4) | pixel2;
             }
         }
