@@ -4,29 +4,34 @@ compress_bool_to_limits <- function(daylight_bool, min_max_coords) {
     n_times <- dims[2]
     height <- dims[3]
 
+    # Store every other row to halve binary size
+    stored_rows <- seq(1, height, by = 2)
+    n_stored <- length(stored_rows)
+
     limits <- array(
         NA_integer_,
-        dim = c(n_months, n_times, height, 3),
+        dim = c(n_months, n_times, n_stored, 3),
         dimnames = list(
             month = dimnames(daylight_bool)$month,
             time = dimnames(daylight_bool)$time,
-            row = 1:height,
+            row = stored_rows,
             limit = c("left", "right", "left2")
         )
     )
 
     pb <- cli::cli_progress_bar(
-        total = height,
+        total = n_stored,
         format = "Compressing {cli::pb_bar} {cli::pb_current}/{cli::pb_total}"
     )
 
-    for (r in seq_len(height)) {
+    for (si in seq_along(stored_rows)) {
         cli::cli_progress_update(id = pb)
+        r <- stored_rows[si]
         row_min <- min_max_coords$min_x[r]
         row_max <- min_max_coords$max_x[r]
 
         if (is.na(row_min) || is.na(row_max)) {
-            limits[,, r, ] <- 0L
+            limits[,, si, ] <- 0L
             next
         }
 
@@ -57,7 +62,7 @@ compress_bool_to_limits <- function(daylight_bool, min_max_coords) {
 
                 if (length(day_positions) == 0) {
                     # No daylight: left > right signals "all night"
-                    limits[m, t, r, ] <- c(sentinel, 0L, sentinel)
+                    limits[m, t, si, ] <- c(sentinel, 0L, sentinel)
                     next
                 }
 
@@ -70,7 +75,7 @@ compress_bool_to_limits <- function(daylight_bool, min_max_coords) {
 
                 if (length(gap_positions) == 0) {
                     # Single contiguous daylight block
-                    limits[m, t, r, ] <- c(
+                    limits[m, t, si, ] <- c(
                         as.integer(min(day_cols)),
                         as.integer(max(day_cols)),
                         sentinel
@@ -83,7 +88,7 @@ compress_bool_to_limits <- function(daylight_bool, min_max_coords) {
                     block1_end <- day_cols[largest_gap_idx]
                     block2_start <- day_cols[largest_gap_idx + 1]
 
-                    limits[m, t, r, ] <- c(
+                    limits[m, t, si, ] <- c(
                         as.integer(min(day_cols)),
                         as.integer(block1_end),
                         as.integer(block2_start)

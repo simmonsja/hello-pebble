@@ -122,19 +122,26 @@ plot_daylight <- function(
         time_idx <- which.min(abs(time_labels - utc_times[ii]))
         time_key <- dimnames(daylight_limits)$time[time_idx]
 
+        # Map display rows to stored rows (nearest-neighbor)
+        stored_rows <- as.integer(dimnames(daylight_limits)$row)
+        stored_idx <- findInterval(
+            seq_len(height), stored_rows,
+            all.inside = TRUE
+        )
+
         left_vec <- daylight_limits[month, time_key, , "left"]
         right_vec <- daylight_limits[month, time_key, , "right"]
 
         row_limits <- data.frame(
             row = seq_len(height),
-            left = as.integer(left_vec),
-            right = as.integer(right_vec),
+            left = as.integer(left_vec[stored_idx]),
+            right = as.integer(right_vec[stored_idx]),
             max_x = as.integer(min_max_coords$max_x)
         )
 
         if (has_left2) {
             left2_vec <- daylight_limits[month, time_key, , "left2"]
-            row_limits$left2 <- as.integer(left2_vec)
+            row_limits$left2 <- as.integer(left2_vec[stored_idx])
 
             base_grid |>
                 dplyr::left_join(row_limits, by = "row") |>
@@ -216,6 +223,13 @@ plot_daylight_single <- function(
     time_idx <- which.min(abs(time_labels - utc_time))
     time_key <- dimnames(daylight_limits)$time[time_idx]
 
+    # Map display rows to stored rows (nearest-neighbor)
+    stored_rows <- as.integer(dimnames(daylight_limits)$row)
+    stored_idx <- findInterval(
+        seq_len(height), stored_rows,
+        all.inside = TRUE
+    )
+
     left_vec <- daylight_limits[month, time_key, , "left"]
     right_vec <- daylight_limits[month, time_key, , "right"]
 
@@ -230,14 +244,14 @@ plot_daylight_single <- function(
 
     row_limits <- data.frame(
         row = seq_len(height),
-        left = as.integer(left_vec),
-        right = as.integer(right_vec),
+        left = as.integer(left_vec[stored_idx]),
+        right = as.integer(right_vec[stored_idx]),
         max_x = as.integer(min_max_coords$max_x)
     )
 
     if (has_left2) {
         left2_vec <- daylight_limits[month, time_key, , "left2"]
-        row_limits$left2 <- as.integer(left2_vec)
+        row_limits$left2 <- as.integer(left2_vec[stored_idx])
     }
 
     # Create pixel states
