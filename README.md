@@ -45,3 +45,7 @@ Current notes:
 - `generate_daynight_map.Rmd` — Generate the binary needed for pebble to generate the merged images on the fly
 - `resize_images.py` — Resize source images for each platform
 
+
+A view of earth from space inspired by the blue marble and hello world images from Artemis and Apollo missions. Presents a fixed view of earth with a transition from day to night (approximate in half hour increments), focussed over Oceania and Southeast Asia - so great if you live in Australia, at a similar longitude, or you just want to experience the vibe of living that part of the world through your Pebble. 
+
+I'll will endeavour to draw up more parts of the world in time...

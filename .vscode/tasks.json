@@ -3,7 +3,7 @@
         {
             "type": "shell",
             "label": "Build and Install",
-            "command": "pebble build && pebble install --emulator basalt && pebble logs --emulator basalt",
+            "command": "pebble build && pebble install --emulator emery && pebble logs --emulator emery",
             "group": {
                 "kind": "build",
                 "isDefault": true

@@ -18,7 +18,7 @@ We need to evaluate the day/night status for each pixel in the raster. We will f
 We will use `suntools::sunriset()` - takes coords, datetime, crs, direction (sunrise/sunset), and whether to return POSIXct.
 
 ```{r}
-platform <- "basalt"
+platform <- "emery"
 debug <- FALSE
 # Crudely I have estimated the centre pixel of the image
 centre_lat <- -3.84

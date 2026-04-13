@@ -7,9 +7,13 @@ images = [
     "./blue_pixel/resources/black_marble_gabbro.png",
 ]
 
+# # Basalt
+# SCREEN_SIZE = (144, 168)
+# NAME = "basalt"
+
 # Basalt
-SCREEN_SIZE = (144, 168)
-NAME = "basalt"
+SCREEN_SIZE = (200, 228)
+NAME = "emery"
 
 for img_name in images:
     # Open image

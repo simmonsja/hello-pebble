@@ -11,9 +11,9 @@ static bool s_palettes_combined = false;
 static void update_background_image(struct tm *utc_time) {
     // It is my understanding that the palette bitmap types allow you to have x many colours from the palette. So 2BitPalette allows for 4 colours.
     // check if day_bitmap and night_bitmap are already loaded, if not load them
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Updating background image for time: %d:%d", utc_time->tm_hour, utc_time->tm_min);
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory START: Free=%lu Used=%lu", 
-            (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Updating background image for time: %d:%d", utc_time->tm_hour, utc_time->tm_min);
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory START: Free=%lu Used=%lu", 
+    //         (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
     
     if (s_day_bitmap == NULL) {
         s_day_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLUE_MARBLE);
@@ -37,21 +37,21 @@ static void update_background_image(struct tm *utc_time) {
         }
 
         // logging
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Day bitmap palette:");
-        for (int i = 0; i < n_colours_per_palette; i++) {
-            GColor color = day_palette[i];
-            APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
-        }
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Night bitmap palette:");
-        for (int i = 0; i < n_colours_per_palette; i++) {
-            GColor color = night_palette[i];
-            APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
-        }
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Combined bitmap palette:");
-        for (int i = 0; i < n_colours_per_palette*2; i++) {
-            GColor color = day_palette[i];
-            APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
-        }
+        // APP_LOG(APP_LOG_LEVEL_DEBUG, "Day bitmap palette:");
+        // for (int i = 0; i < n_colours_per_palette; i++) {
+        //     GColor color = day_palette[i];
+        //     APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+        // }
+        // APP_LOG(APP_LOG_LEVEL_DEBUG, "Night bitmap palette:");
+        // for (int i = 0; i < n_colours_per_palette; i++) {
+        //     GColor color = night_palette[i];
+        //     APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+        // }
+        // APP_LOG(APP_LOG_LEVEL_DEBUG, "Combined bitmap palette:");
+        // for (int i = 0; i < n_colours_per_palette*2; i++) {
+        //     GColor color = day_palette[i];
+        //     APP_LOG(APP_LOG_LEVEL_DEBUG, "Color %d: R=%d G=%d B=%d A=%d", i, color.r, color.g, color.b, color.a);
+        // }
 
         gbitmap_set_palette(s_day_bitmap, day_palette, false);
         gbitmap_set_palette(s_night_bitmap, day_palette, false);
@@ -77,7 +77,7 @@ static void update_background_image(struct tm *utc_time) {
     uint8_t *comb_data = gbitmap_get_data(s_bitmap);
     memcpy(comb_data, gbitmap_get_data(s_day_bitmap), bytes_per_row * rows);
 
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Bitmap dimensions: %d cols x %d rows, bytes per row: %d", cols, rows, bytes_per_row);
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Bitmap dimensions: %d cols x %d rows, bytes per row: %d", cols, rows, bytes_per_row);
 
     // Get pregenerated limits array
     ResHandle handle = resource_get_handle(RESOURCE_ID_LIMITS);
@@ -147,20 +147,20 @@ static void update_background_image(struct tm *utc_time) {
         free(s_buffer);
     }
         
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory merged: Free=%lu Used=%lu", 
-            (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory merged: Free=%lu Used=%lu", 
+    //         (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
 
     // set the palette on the already-created bitmap
     gbitmap_set_palette(s_bitmap, day_palette, false);
         
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory assigned: Free=%lu Used=%lu", 
-            (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "I am about to set the bitmap on the layer");
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory assigned: Free=%lu Used=%lu", 
+    //         (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "I am about to set the bitmap on the layer");
     bitmap_layer_set_bitmap(s_bitmap_layer, s_bitmap);
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "I have set the bitmap on the layer");
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "I have set the bitmap on the layer");
     
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory END: Free=%lu Used=%lu", 
-            (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Memory END: Free=%lu Used=%lu", 
+    //         (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
 }
 
 static void update_time(bool force_bgd_update) {
@@ -259,7 +259,7 @@ static void prv_deinit(void) {
 int main(void) {
     prv_init();
 
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", s_window);
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", s_window);
 
     app_event_loop();
     prv_deinit();
