@@ -5,7 +5,7 @@ This project aims to create a pebble watch face from a pixel art earth (inspired
 ## Supported platforms
 
 - Basalt (Pebble Time, 144×168)
-- Gabbro (Pebble 2, 260×260 — via Rebble)
+- Gabbro (Pebble 2, 260×260)
 
 ## How it works
 
