@@ -7,3 +7,10 @@ blue_pixel/*
 hello/
 .Rproj.user
 renv/
+
+.github/
+samples/
+tutorials/
+templates/
+reference/
+scripts/

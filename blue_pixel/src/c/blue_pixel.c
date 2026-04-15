@@ -2,11 +2,15 @@
 
 static Window *s_window;
 static TextLayer *s_time_layer;
+static TextLayer *s_date_layer;
 static GBitmap *s_bitmap;
 static GBitmap *s_day_bitmap;
 static GBitmap *s_night_bitmap;
 static BitmapLayer *s_bitmap_layer;
 static bool s_palettes_combined = false;
+static bool s_show_date = true;
+
+#define PERSIST_KEY_SHOW_DATE 0
 
 static void update_background_image(struct tm *utc_time) {
     // It is my understanding that the palette bitmap types allow you to have x many colours from the palette. So 2BitPalette allows for 4 colours.
@@ -85,6 +89,7 @@ static void update_background_image(struct tm *utc_time) {
     unsigned int stored_rows = (rows + 1) / 2;  // ceil(rows/2) = 84 for 168
     size_t block_size_bytes = stored_rows * 3 * sizeof(uint8_t);
     uint8_t *s_buffer = (uint8_t*)malloc(block_size_bytes);
+    if (!s_buffer) { return; }
 
     // time_idx: 0-based half-hour index (0..47)
     int time_idx = utc_time->tm_hour * 2 + (utc_time->tm_min >= 30 ? 1 : 0);
@@ -163,24 +168,54 @@ static void update_background_image(struct tm *utc_time) {
     //         (unsigned long)heap_bytes_free(), (unsigned long)heap_bytes_used());
 }
 
+static void update_layout(void) {
+    if (!s_time_layer || !s_date_layer) return;
+
+    Layer *window_layer = window_get_root_layer(s_window);
+    GRect bounds = layer_get_bounds(window_layer);
+
+    const int time_h = 55;
+    const int date_h = 26;
+    const int gap = 6;
+
+    if (s_show_date) {
+        int group_h = time_h + gap + date_h;
+        int group_top = (bounds.size.h - group_h) / 2;
+        layer_set_frame(text_layer_get_layer(s_time_layer),
+                        GRect(0, group_top, bounds.size.w, time_h));
+        layer_set_frame(text_layer_get_layer(s_date_layer),
+                        GRect(0, group_top + time_h + gap, bounds.size.w, date_h));
+        layer_set_hidden(text_layer_get_layer(s_date_layer), false);
+    } else {
+        int time_top = (bounds.size.h - time_h) / 2;
+        layer_set_frame(text_layer_get_layer(s_time_layer),
+                        GRect(0, time_top, bounds.size.w, time_h));
+        layer_set_hidden(text_layer_get_layer(s_date_layer), true);
+    }
+}
+
 static void update_time(bool force_bgd_update) {
-    // Get a time structure
     time_t temp = time(NULL);
     struct tm *tick_time = localtime(&temp);
-    struct tm *utc_time = gmtime(&temp);
-    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Tick time: %d:%d:%d", tick_time->tm_hour, tick_time->tm_min, tick_time->tm_sec);
 
-    // Get the current hours and minutes from tick_time
     static char s_time_buffer[8];
     strftime(s_time_buffer, sizeof(s_time_buffer), clock_is_24h_style() ? "%H:%M" : "%I:%M", tick_time);
-    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Formatted time: %s", s_time_buffer);
-
-    // // Display this time on the created TextLayer
     text_layer_set_text(s_time_layer, s_time_buffer);
 
-    // If the time is on the hour or half past
-    if (tick_time->tm_min == 0 || tick_time->tm_min == 30 || force_bgd_update) {
-        // Update the background image based on the time of day
+    static char s_date_buffer[12];
+    static const char *months[] = {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    };
+    if (s_show_date) {
+        snprintf(s_date_buffer, sizeof(s_date_buffer), "%d %s", tick_time->tm_mday, months[tick_time->tm_mon]);
+        text_layer_set_text(s_date_layer, s_date_buffer);
+    }
+
+    // Capture local minute before gmtime() may overwrite the shared tm buffer
+    int local_min = tick_time->tm_min;
+    struct tm *utc_time = gmtime(&temp);
+    if (local_min == 0 || local_min == 30 || force_bgd_update) {
         update_background_image(utc_time);
     }
 }
@@ -189,43 +224,55 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
     update_time(false);
 }
 
+static void inbox_received_handler(DictionaryIterator *iterator, void *context) {
+    Tuple *show_date_t = dict_find(iterator, MESSAGE_KEY_SHOW_DATE);
+    if (show_date_t) {
+        s_show_date = (bool)show_date_t->value->int32;
+        persist_write_bool(PERSIST_KEY_SHOW_DATE, s_show_date);
+        update_layout();
+    }
+}
+
 static void prv_window_load(Window *window) {
-    // Get the root layer and its bounds for 
     Layer *window_layer = window_get_root_layer(window);
     GRect bounds = layer_get_bounds(window_layer);
 
     window_set_background_color(window, GColorBlack);
 
-    // Display the time GRect (xul,yul, width, height)
-    const int layer_height = 42;
-    const int text_padding_buffer = 10;
-    s_time_layer = text_layer_create(GRect(0, bounds.size.h/2 - layer_height/2 - text_padding_buffer, bounds.size.w, layer_height));
-    // // Style the TextLayer
-    text_layer_set_background_color(s_time_layer, GColorClear);//GColorFromRGBA(0, 0, 0, 85)); // Semi-transparent white background
-    text_layer_set_text_color(s_time_layer, GColorWhite);
-    text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD));
-    text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
-
-    // Create a layer to display the GBitmap
-    s_bitmap_layer = bitmap_layer_create(GRect(0, 0, bounds.size.w, bounds.size.h));//)); // Gabbro 260, 260));
+    // Bitmap layer (background) — added first so text layers render on top
+    s_bitmap_layer = bitmap_layer_create(GRect(0, 0, bounds.size.w, bounds.size.h));
     bitmap_layer_set_compositing_mode(s_bitmap_layer, GCompOpSet);
-    // // Link the GBitmap to the BitmapLayer
-    // bitmap_layer_set_bitmap(s_bitmap_layer, s_bitmap);
-    // Add the BitmapLayer to the window's root layer
-    layer_add_child(window_get_root_layer(window), bitmap_layer_get_layer(s_bitmap_layer));
+    layer_add_child(window_layer, bitmap_layer_get_layer(s_bitmap_layer));
 
-    // Update the time immediately when the window loads
-    update_time(true);
-
-    // Add the TextLayer to the window's root layer
+    // Time layer
+    s_time_layer = text_layer_create(GRect(0, 0, bounds.size.w, 55));
+    text_layer_set_background_color(s_time_layer, GColorClear);
+    text_layer_set_text_color(s_time_layer, GColorWhite);
+    text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_ROBOTO_BOLD_SUBSET_49));
+    text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
     layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
+
+    // Date layer
+    s_date_layer = text_layer_create(GRect(0, 0, bounds.size.w, 26));
+    text_layer_set_background_color(s_date_layer, GColorClear);
+    text_layer_set_text_color(s_date_layer, GColorWhite);
+    text_layer_set_font(s_date_layer, fonts_get_system_font(FONT_KEY_ROBOTO_CONDENSED_21));
+    text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
+    layer_add_child(window_layer, text_layer_get_layer(s_date_layer));
+
+    update_layout();
+    update_time(true);
 }
 
 static void prv_window_unload(Window *window) {
     text_layer_destroy(s_time_layer);
+    text_layer_destroy(s_date_layer);
 }
 
 static void prv_init(void) {
+    // Load persisted setting; default to showing the date
+    s_show_date = persist_exists(PERSIST_KEY_SHOW_DATE) ? persist_read_bool(PERSIST_KEY_SHOW_DATE) : true;
+
     // Entry point: create the main window and set up handlers
     s_window = window_create();
     // window_set_click_config_provider(s_window, prv_click_config_provider);
@@ -233,7 +280,11 @@ static void prv_init(void) {
         .load = prv_window_load,
         .unload = prv_window_unload,
     });
-    
+
+    // AppMessage — receive settings from Clay config page
+    app_message_register_inbox_received(inbox_received_handler);
+    app_message_open(64, 64);
+
     // Time
     // Register with TickTimerService - MINUTE_UNIT means we'll get a callback every minute
     tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
@@ -248,6 +299,10 @@ static void prv_deinit(void) {
     window_destroy(s_window);
     // Clean up the GBitmap and BitmapLayer resources
     bitmap_layer_destroy(s_bitmap_layer);
+    if (s_bitmap) {
+        gbitmap_destroy(s_bitmap);
+        s_bitmap = NULL;
+    }
     if (s_day_bitmap) {
         gbitmap_destroy(s_day_bitmap);
     }
