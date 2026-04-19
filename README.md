@@ -33,3 +33,10 @@ This project aims to create a pebble watch face from a pixel art earth (inspired
 A view of earth from space inspired by the blue marble and hello world images from Artemis and Apollo missions. Presents a fixed view of earth with a transition from day to night (approximate in half hour increments), focussed over Oceania and Southeast Asia - so great if you live in Australia, at a similar longitude, or you just want to experience the vibe of living that part of the world through your Pebble. 
 
 I'll will endeavour to draw up more parts of the world in time...
+
+# Troubleshooting
+I was running into issues with qemu getting stuck booting and complete reinstall involves.
+
+- uv tool uninstall
+- Delete ~/Library/Application Support/Pebble SDK/
+- Reinstall

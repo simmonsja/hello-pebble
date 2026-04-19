@@ -1,0 +1,16 @@
+# R package libraries (large binary trees, not needed in Docker build context)
+renv/library/
+renv/staging/
+
+# Build artefacts (mounted at runtime via workspaceMount)
+blue_pixel/build/
+hello/build/
+
+# Pre-computed R data files (large binary; available at runtime via workspace mount)
+data/*.rds
+
+# Git internals
+.git/
+
+# R project file
+*.Rproj

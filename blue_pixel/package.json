@@ -2,9 +2,13 @@
   "name": "blue_pixel",
   "author": "Joshua Simmons",
   "version": "1.0.0",
-  "keywords": ["pebble-app"],
+  "keywords": [
+    "pebble-app"
+  ],
   "private": true,
-  "dependencies": {},
+  "dependencies": {
+    "@rebble/clay": "^1.0.8"
+  },
   "pebble": {
     "displayName": "blue_pixel",
     "uuid": "00ed41ca-b7b7-41f6-bc67-919a744c739f",
@@ -19,95 +23,95 @@
       "watchface": true
     },
     "messageKeys": [
-      "dummy"
+      "SHOW_DATE"
     ],
     "resources": {
-        "media": [
-            {
-                "type": "bitmap",
-                "name": "BLUE_MARBLE",
-                "file": "blue_marble_gabbro.png",
-                "memoryFormat": "4BitPalette",
-                "spaceOptimization": "memory",
-                "targetPlatforms": [
-                    "gabbro"
-                ]
-            },
-            {
-                "type": "bitmap",
-                "name": "BLACK_MARBLE",
-                "file": "black_marble_gabbro.png",
-                "memoryFormat": "4BitPalette",
-                "spaceOptimization": "memory",
-                "targetPlatforms": [
-                    "gabbro"
-                ]
-            },
-            {
-                "type": "bitmap",
-                "name": "BLUE_MARBLE",
-                "file": "blue_marble_emery.png",
-                "memoryFormat": "4BitPalette",
-                "spaceOptimization": "memory",
-                "targetPlatforms": [
-                    "emery"
-                ]
-            },
-            {
-                "type": "bitmap",
-                "name": "BLACK_MARBLE",
-                "file": "black_marble_emery.png",
-                "memoryFormat": "4BitPalette",
-                "spaceOptimization": "memory",
-                "targetPlatforms": [
-                    "emery"
-                ]
-            },
-            {
-                "type": "bitmap",
-                "name": "BLUE_MARBLE",
-                "file": "blue_marble_basalt.png",
-                "memoryFormat": "4BitPalette",
-                "spaceOptimization": "memory",
-                "targetPlatforms": [
-                    "basalt"
-                ]
-            },
-            {
-                "type": "bitmap",
-                "name": "BLACK_MARBLE",
-                "file": "black_marble_basalt.png",
-                "memoryFormat": "4BitPalette",
-                "spaceOptimization": "memory",
-                "targetPlatforms": [
-                    "basalt"
-                ]
-            },
-            {
-                "type": "raw",
-                "name": "LIMITS",
-                "file": "limits_basalt.bin",
-                "targetPlatforms": [
-                    "basalt"
-                ]
-            },
-            {
-                "type": "raw",
-                "name": "LIMITS",
-                "file": "limits_gabbro.bin",
-                "targetPlatforms": [
-                    "gabbro"
-                ]
-            },
-            {
-                "type": "raw",
-                "name": "LIMITS",
-                "file": "limits_emery.bin",
-                "targetPlatforms": [
-                    "emery"
-                ]
-            }
-        ]
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "BLUE_MARBLE",
+          "file": "blue_marble_gabbro.png",
+          "memoryFormat": "4BitPalette",
+          "spaceOptimization": "memory",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "BLACK_MARBLE",
+          "file": "black_marble_gabbro.png",
+          "memoryFormat": "4BitPalette",
+          "spaceOptimization": "memory",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "BLUE_MARBLE",
+          "file": "blue_marble_emery.png",
+          "memoryFormat": "4BitPalette",
+          "spaceOptimization": "memory",
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "BLACK_MARBLE",
+          "file": "black_marble_emery.png",
+          "memoryFormat": "4BitPalette",
+          "spaceOptimization": "memory",
+          "targetPlatforms": [
+            "emery"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "BLUE_MARBLE",
+          "file": "blue_marble_basalt.png",
+          "memoryFormat": "4BitPalette",
+          "spaceOptimization": "memory",
+          "targetPlatforms": [
+            "basalt"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "BLACK_MARBLE",
+          "file": "black_marble_basalt.png",
+          "memoryFormat": "4BitPalette",
+          "spaceOptimization": "memory",
+          "targetPlatforms": [
+            "basalt"
+          ]
+        },
+        {
+          "type": "raw",
+          "name": "LIMITS",
+          "file": "limits_basalt.bin",
+          "targetPlatforms": [
+            "basalt"
+          ]
+        },
+        {
+          "type": "raw",
+          "name": "LIMITS",
+          "file": "limits_gabbro.bin",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "raw",
+          "name": "LIMITS",
+          "file": "limits_emery.bin",
+          "targetPlatforms": [
+            "emery"
+          ]
+        }
+      ]
     }
   }
 }

@@ -176,7 +176,7 @@ static void update_layout(void) {
 
     const int time_h = 55;
     const int date_h = 26;
-    const int gap = 6;
+    const int gap = 2;
 
     if (s_show_date) {
         int group_h = time_h + gap + date_h;
@@ -248,7 +248,7 @@ static void prv_window_load(Window *window) {
     s_time_layer = text_layer_create(GRect(0, 0, bounds.size.w, 55));
     text_layer_set_background_color(s_time_layer, GColorClear);
     text_layer_set_text_color(s_time_layer, GColorWhite);
-    text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_ROBOTO_BOLD_SUBSET_49));
+    text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD));
     text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
     layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
 

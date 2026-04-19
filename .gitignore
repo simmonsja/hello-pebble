@@ -13,3 +13,5 @@ tutorials/
 templates/
 reference/
 scripts/
+
+node_modules/
