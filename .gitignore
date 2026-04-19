@@ -15,3 +15,4 @@ reference/
 scripts/
 
 node_modules/
+.devcontainer/devcontainer.json
