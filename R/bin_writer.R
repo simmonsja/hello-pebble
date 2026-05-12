@@ -29,17 +29,66 @@ compress_bool_to_limits <- function(daylight_bool, min_max_coords) {
         r <- stored_rows[si]
         row_min <- min_max_coords$min_x[r]
         row_max <- min_max_coords$max_x[r]
+        pair_r <- NA_integer_
+        pair_min <- NA_integer_
+        pair_max <- NA_integer_
 
         if (is.na(row_min) || is.na(row_max)) {
-            limits[,, si, ] <- 0L
-            next
+            # The odd stored row is outside the globe.  The even row that shares
+            # this stored slot (r+1) may still be inside the globe, so try that
+            # first.  If not, fall back to the all-zero sentinel.
+            cand <- r + 1L
+            if (
+                cand <= nrow(min_max_coords) &&
+                    !is.na(min_max_coords$min_x[cand]) &&
+                    !is.na(min_max_coords$max_x[cand])
+            ) {
+                r <- cand
+                row_min <- min_max_coords$min_x[r]
+                row_max <- min_max_coords$max_x[r]
+                # pair is the original odd row (NA) — no width expansion needed
+            } else {
+                limits[,, si, ] <- 0L
+                next
+            }
+        } else {
+            # Odd row is valid. Check if the even pair (r+1) is wider.
+            cand <- r + 1L
+            if (cand <= nrow(min_max_coords)) {
+                pair_r <- cand
+                pair_min <- min_max_coords$min_x[pair_r]
+                pair_max <- min_max_coords$max_x[pair_r]
+            }
         }
 
-        sentinel <- as.integer(row_max + 1L)
+        # Effective bounds: union of canonical row and its even pair's bounds.
+        effective_min <- min(row_min, pair_min, na.rm = TRUE)
+        effective_max <- max(row_max, pair_max, na.rm = TRUE)
+        sentinel <- as.integer(effective_max + 1L)
 
         for (m in seq_len(n_months)) {
             for (t in seq_len(n_times)) {
-                row_vals <- daylight_bool[m, t, r, row_min:row_max]
+                # Build row_vals over effective_min:effective_max.
+                # Use canonical row r for its own columns; use pair_r for any
+                # columns that extend beyond r's bounds (wider even-pair edges).
+                n_eff <- effective_max - effective_min + 1L
+                row_vals <- logical(n_eff)
+                r_start <- row_min - effective_min + 1L
+                r_end <- row_max - effective_min + 1L
+                row_vals[r_start:r_end] <-
+                    as.logical(daylight_bool[m, t, r, row_min:row_max])
+
+                if (!is.na(pair_min) && effective_min < row_min) {
+                    ext_cols <- effective_min:(row_min - 1L)
+                    row_vals[seq_along(ext_cols)] <-
+                        as.logical(daylight_bool[m, t, pair_r, ext_cols])
+                }
+                if (!is.na(pair_max) && effective_max > row_max) {
+                    ext_cols <- (row_max + 1L):effective_max
+                    row_vals[(r_end + 1L):(r_end + length(ext_cols))] <-
+                        as.logical(daylight_bool[m, t, pair_r, ext_cols])
+                }
+
                 row_vals[is.na(row_vals)] <- FALSE
 
                 # Fill small gaps (≤ 2 pixels) to smooth projection artifacts
@@ -67,7 +116,7 @@ compress_bool_to_limits <- function(daylight_bool, min_max_coords) {
                 }
 
                 # Convert to absolute column indices
-                day_cols <- day_positions + row_min - 1L
+                day_cols <- day_positions + effective_min - 1L
 
                 # Find gaps between consecutive day pixels
                 diffs <- diff(day_cols)

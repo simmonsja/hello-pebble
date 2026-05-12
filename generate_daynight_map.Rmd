@@ -269,7 +269,7 @@ plot_daylight_bool(
     width = width, height = height, radius = radius, tz = "Australia/Sydney"
 )
 # Quick summary of a single time slice
-slice <- daylight_bool[6, 9, , 1:50]
+slice <- daylight_bool[6, 1, , 1:50]
 message("Month 6, time 14.0: ", sum(slice), " lit pixels out of ", length(slice))
 ```
 

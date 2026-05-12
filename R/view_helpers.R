@@ -52,7 +52,7 @@ plot_daylight_bool <- function(
             dplyr::left_join(lit_df, by = c("row", "col")) |>
             dplyr::mutate(
                 state = dplyr::case_when(
-                    !in_circle ~ NA_character_,
+                    is.na(is_day) ~ NA_character_,
                     is_day ~ "day",
                     TRUE ~ "night"
                 ),
@@ -66,13 +66,14 @@ plot_daylight_bool <- function(
         levels = unique(pixel_df$time_label)
     )
 
-    ggplot2::ggplot(pixel_df, ggplot2::aes(x = col, y = -row, fill = state)) +
+    ggplot2::ggplot(pixel_df, ggplot2::aes(x = col, y = row, fill = state)) +
         ggplot2::geom_raster() +
         ggplot2::scale_fill_manual(
             values = c(night = night_colour, day = day_colour),
             na.value = "transparent",
             name = NULL
         ) +
+        ggplot2::scale_y_reverse() +
         ggplot2::coord_fixed() +
         ggplot2::facet_wrap(~time_label) +
         ggplot2::theme_void() +
@@ -92,17 +93,12 @@ plot_daylight <- function(
     day_colour = "#87ceeb"
 ) {
     time_labels <- as.numeric(dimnames(daylight_limits)$time)
-    cx <- width / 2
-    cy <- height / 2
     has_left2 <- dim(daylight_limits)[4] >= 3
 
     base_grid <- expand.grid(
         col = seq_len(width),
         row = seq_len(height)
-    ) |>
-        dplyr::mutate(
-            in_circle = sqrt((col - cx)^2 + (row - cy)^2) <= radius
-        )
+    )
 
     # Convert local hours to UTC decimal hours for array lookup
     utc_times <- sapply(times, function(t) {
@@ -125,7 +121,8 @@ plot_daylight <- function(
         # Map display rows to stored rows (nearest-neighbor)
         stored_rows <- as.integer(dimnames(daylight_limits)$row)
         stored_idx <- findInterval(
-            seq_len(height), stored_rows,
+            seq_len(height),
+            stored_rows,
             all.inside = TRUE
         )
 
@@ -136,6 +133,7 @@ plot_daylight <- function(
             row = seq_len(height),
             left = as.integer(left_vec[stored_idx]),
             right = as.integer(right_vec[stored_idx]),
+            min_x = as.integer(min_max_coords$min_x),
             max_x = as.integer(min_max_coords$max_x)
         )
 
@@ -147,7 +145,9 @@ plot_daylight <- function(
                 dplyr::left_join(row_limits, by = "row") |>
                 dplyr::mutate(
                     state = dplyr::case_when(
-                        !in_circle ~ NA_character_,
+                        is.na(max_x) |
+                            col < min_x |
+                            col > max_x ~ NA_character_,
                         !is.na(left) & col >= left & col <= right ~ "day",
                         !is.na(left2) &
                             !is.na(max_x) &
@@ -163,7 +163,9 @@ plot_daylight <- function(
                 dplyr::left_join(row_limits, by = "row") |>
                 dplyr::mutate(
                     state = dplyr::case_when(
-                        !in_circle ~ NA_character_,
+                        is.na(max_x) |
+                            col < min_x |
+                            col > max_x ~ NA_character_,
                         !is.na(left) & col >= left & col <= right ~ "day",
                         TRUE ~ "night"
                     ),
@@ -178,13 +180,14 @@ plot_daylight <- function(
         levels = unique(pixel_df$time_label)
     )
 
-    ggplot2::ggplot(pixel_df, ggplot2::aes(x = col, y = -row, fill = state)) +
+    ggplot2::ggplot(pixel_df, ggplot2::aes(x = col, y = row, fill = state)) +
         ggplot2::geom_raster() +
         ggplot2::scale_fill_manual(
             values = c(night = night_colour, day = day_colour),
             na.value = "transparent",
             name = NULL
         ) +
+        ggplot2::scale_y_reverse() +
         ggplot2::coord_fixed() +
         ggplot2::facet_wrap(~time_label) +
         ggplot2::theme_void() +
@@ -204,8 +207,6 @@ plot_daylight_single <- function(
     day_colour = "#87ceeb"
 ) {
     time_labels <- as.numeric(dimnames(daylight_limits)$time)
-    cx <- width / 2
-    cy <- height / 2
     has_left2 <- dim(daylight_limits)[4] >= 3
 
     # Convert local time to UTC
@@ -226,7 +227,8 @@ plot_daylight_single <- function(
     # Map display rows to stored rows (nearest-neighbor)
     stored_rows <- as.integer(dimnames(daylight_limits)$row)
     stored_idx <- findInterval(
-        seq_len(height), stored_rows,
+        seq_len(height),
+        stored_rows,
         all.inside = TRUE
     )
 
@@ -237,15 +239,13 @@ plot_daylight_single <- function(
     base_grid <- expand.grid(
         col = seq_len(width),
         row = seq_len(height)
-    ) |>
-        dplyr::mutate(
-            in_circle = sqrt((col - cx)^2 + (row - cy)^2) <= radius
-        )
+    )
 
     row_limits <- data.frame(
         row = seq_len(height),
         left = as.integer(left_vec[stored_idx]),
         right = as.integer(right_vec[stored_idx]),
+        min_x = as.integer(min_max_coords$min_x),
         max_x = as.integer(min_max_coords$max_x)
     )
 
@@ -262,7 +262,7 @@ plot_daylight_single <- function(
         pixel_df <- pixel_df |>
             dplyr::mutate(
                 state = dplyr::case_when(
-                    !in_circle ~ NA_character_,
+                    is.na(max_x) | col < min_x | col > max_x ~ NA_character_,
                     !is.na(left) & col >= left & col <= right ~ "day",
                     !is.na(left2) &
                         !is.na(max_x) &
@@ -276,7 +276,7 @@ plot_daylight_single <- function(
         pixel_df <- pixel_df |>
             dplyr::mutate(
                 state = dplyr::case_when(
-                    !in_circle ~ NA_character_,
+                    is.na(max_x) | col < min_x | col > max_x ~ NA_character_,
                     !is.na(left) & col >= left & col <= right ~ "day",
                     TRUE ~ "night"
                 )
@@ -323,7 +323,7 @@ plot_daylight_single <- function(
         ) +
         ggplot2::coord_fixed() +
         ggplot2::scale_x_continuous(breaks = seq(0, width, by = 10)) +
-        ggplot2::scale_y_continuous(breaks = seq(0, height, by = 10)) +
+        ggplot2::scale_y_reverse(breaks = seq(0, height, by = 10)) +
         ggplot2::labs(
             title = sprintf(
                 "Month %d, Time %02d:00 (%s) → UTC %.1f [%d, %d, , ]",
@@ -340,4 +340,83 @@ plot_daylight_single <- function(
         ggplot2::theme_minimal()
 
     return(p)
+}
+
+# Reconstruct which pixels are day or night from the compressed limits array,
+# using exactly the same logic as the C watchface (blue_pixel.c).
+#
+# Parameters:
+#   daylight_limits  - array [month, time, stored_row, limit] from compress_bool_to_limits()
+#   month            - 1-based integer month index
+#   time_key         - character time key matching dimnames(daylight_limits)$time, e.g. "0"
+#   width            - image width in pixels
+#   height           - image height in pixels
+#   min_max_coords   - data frame with columns min_x / max_x (one row per display row),
+#                      giving the left/right column bounds of the globe for that row;
+#                      NA rows are outside the globe
+#
+# Returns a logical matrix (height × width):
+#   TRUE  = day pixel
+#   FALSE = night pixel
+#   NA    = outside the globe (transparent / not available)
+#
+# The C mapping from display row to stored row is integer division:
+#   stored_row (0-based) = display_row (0-based) / 2
+# So display rows 1 & 2 both read from stored row 1, rows 3 & 4 from stored row 2, etc.
+# This means even display rows inherit limits from the odd row above them.
+reconstruct_daylight_from_limits <- function(
+    daylight_limits,
+    month,
+    time_key,
+    width,
+    height,
+    min_max_coords
+) {
+    n_stored <- dim(daylight_limits)[3]
+    left_vec <- daylight_limits[month, time_key, , "left"]
+    right_vec <- daylight_limits[month, time_key, , "right"]
+    left2_vec <- daylight_limits[month, time_key, , "left2"]
+
+    result <- matrix(NA, nrow = height, ncol = width)
+
+    for (r in seq_len(height)) {
+        row_min <- min_max_coords$min_x[r]
+        row_max <- min_max_coords$max_x[r]
+        if (is.na(row_min) || is.na(row_max)) {
+            next
+        }
+
+        # Mirror C integer division: stored_row (0-based) = (r-1) / 2
+        # Convert to 1-based index for the stored_row dimension of the limits array.
+        si <- min((r - 1L) %/% 2L + 1L, n_stored)
+        left <- as.integer(left_vec[si])
+        right <- as.integer(right_vec[si])
+        left2 <- as.integer(left2_vec[si])
+
+        for (col in row_min:row_max) {
+            is_day <- FALSE
+
+            # Primary daylight block: left..right (left > right means all-night row)
+            if (left <= right && col >= left && col <= right) {
+                is_day <- TRUE
+            }
+
+            # Secondary daylight block: left2..end-of-row
+            # Skip if left2 falls inside the primary block (sentinel / invalid).
+            # Mirror C condition: !(left2 > left && left2 <= right) && left2 > 0 && left2 < width
+            if (!is_day) {
+                if (
+                    !(left2 > left && left2 <= right) &&
+                        left2 > 0L &&
+                        left2 < width
+                ) {
+                    if (col >= left2) is_day <- TRUE
+                }
+            }
+
+            result[r, col] <- is_day
+        }
+    }
+
+    result
 }

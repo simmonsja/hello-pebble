@@ -108,8 +108,8 @@ static void update_background_image(struct tm *utc_time) {
         unsigned int left2_limit = s_buffer[stored_row + 2 * stored_rows];
 
         for (unsigned int jj = 0; jj < bytes_per_row; jj++) {
-            unsigned int px_left = jj * 2;
-            unsigned int px_right = jj * 2 + 1;
+            unsigned int px_left = jj * 2 + 1;   // 1-based, matching R's 1-based limit values
+            unsigned int px_right = jj * 2 + 2;  // 1-based
 
             // Determine if each pixel in this byte is night
             // Day if: (px >= left && px <= right) || (left2 <= max_col && px >= left2)
@@ -128,19 +128,23 @@ static void update_background_image(struct tm *utc_time) {
             // but we also need left2 to be a valid column
             if (left2_limit > left_limit && left2_limit <= right_limit) {
                 // left2 is within the primary block - not a valid second block
-            } else if (left2_limit > 0 && left2_limit < cols) {
+            } else if (left2_limit > 0 && left2_limit <= cols) {
                 // Valid second block from left2 to end of available pixels in row
                 if (px_left >= left2_limit) px1_night = false;
                 if (px_right >= left2_limit) px2_night = false;
             }
 
             if (px1_night || px2_night) {
-                uint8_t byte_value = night_data[row_byte_num + jj];
-                uint8_t pixel1 = (byte_value >> 4) & 0x0F;
-                uint8_t pixel2 = byte_value & 0x0F;
+                uint8_t night_byte = night_data[row_byte_num + jj];
+                uint8_t day_byte   = comb_data[row_byte_num + jj];  // initialised from day bitmap
 
-                if (px1_night) pixel1 += n_colours_per_palette;
-                if (px2_night) pixel2 += n_colours_per_palette;
+                // For each pixel: take from day bitmap by default,
+                // replace with shifted night value only if that pixel is night.
+                uint8_t pixel1 = (day_byte >> 4) & 0x0F;
+                uint8_t pixel2 = day_byte & 0x0F;
+
+                if (px1_night) pixel1 = ((night_byte >> 4) & 0x0F) + n_colours_per_palette;
+                if (px2_night) pixel2 = (night_byte & 0x0F) + n_colours_per_palette;
 
                 comb_data[row_byte_num + jj] = (pixel1 << 4) | pixel2;
             }

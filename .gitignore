@@ -13,6 +13,8 @@ tutorials/
 templates/
 reference/
 scripts/
+tests/
+.vscode/
 
 node_modules/
 .devcontainer/devcontainer.json
